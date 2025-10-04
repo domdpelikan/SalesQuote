@@ -994,6 +994,14 @@
             
             if (hasExchange && totalExchange > 0) {
                 const yPos = (hasOutright && totalOutright > 0) ? finalY + 18 : finalY + 10;
+
+                   // Add thin gray line separator if both totals exist
+            if (hasOutright && totalOutright > 0) {
+            doc.setDrawColor(200, 200, 200); // Light gray
+            doc.setLineWidth(0.5);
+            doc.line(15, yPos - 1, 195, yPos - 1);
+            }
+                
                 doc.setFillColor(45, 122, 127);
                 doc.rect(15, yPos, 180, 8, 'F');
                 doc.setFontSize(12);
