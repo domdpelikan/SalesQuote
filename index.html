@@ -161,7 +161,7 @@
                 <section class="searchable-quote-history">
                     <h3>Search All Quotes</h3>
                     <div class="form-group">
-                        <input type="search" id="quoteSearchInput" placeholder="Search by PN, Customer, or Item Name...">
+                        <input type="search" id="quoteSearchInput" placeholder="Search by PN, Sold To, or Item Name...">
                     </div>
                     <div class="history-container">
                         <table id="searchHistoryTable">
@@ -189,6 +189,7 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
     
     <script>
+        // --- START CONFIGURATION ---
         const firebaseConfig = {
           apiKey: "AIzaSyCe0u6B6qA9y6xvSR_jbY1Do-ljPKy5Lu8",
           authDomain: "imed-sales-quote.firebaseapp.com",
@@ -199,6 +200,14 @@
           appId: "1:830326754595:web:ca03272749599736fad096",
           measurementId: "G-6TCTDFX5PL"
         };
+        
+        const APPSHEET_CONFIG = {
+            API_KEY: "V2-p5nLK-I6suM-yAVyE-bhP5n-TaFuq-uDBbY-vjvr0-8RoEu",
+            APP_ID: "876dcdc3-0570-427f-9be0-53367d74bf69",
+            TABLE_NAME: "Siemens Stock",
+            CUSTOMER_COLUMN: "Sold"
+        };
+        // --- END CONFIGURATION ---
 
         firebase.initializeApp(firebaseConfig);
         const database = firebase.database();
@@ -214,7 +223,6 @@
             document.getElementById('partNumber').textContent = partNumber || 'N/A';
             
             if (!partNumber) {
-                alert("No Part Number provided in the URL.");
                 return;
             }
             
@@ -235,18 +243,29 @@
 
         async function fetchCustomersFromAppSheet() {
             const customerSelect = document.getElementById('customer');
+            const encodedTableName = encodeURIComponent(APPSHEET_CONFIG.TABLE_NAME);
+            const API_URL = `https://api.appsheet.com/api/v2/apps/${APPSHEET_CONFIG.APP_ID}/tables/${encodedTableName}/Action`;
+
             try {
-                const response = await fetch('/api/customers');
-                if (!response.ok) throw new Error(`Failed to fetch customers: ${response.statusText}`);
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'ApplicationAccessKey': APPSHEET_CONFIG.API_KEY },
+                    body: JSON.stringify({ "Action": "Find", "Properties": {}, "Rows": [] })
+                });
+
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`Failed to fetch customers: ${response.status} ${errorText}`);
+                }
                 const data = await response.json();
-                const customers = data.Rows || data;
                 
                 customerSelect.innerHTML = '<option value="" disabled selected>Select from Sold List...</option>';
                 const customerNames = new Set();
-                if (Array.isArray(customers)) {
-                    customers.forEach(customer => {
-                        if (customer['Sold'] && customer['Sold'].trim() !== '') {
-                            customerNames.add(customer['Sold'].trim());
+                if (Array.isArray(data)) {
+                    data.forEach(item => {
+                        const customerName = item[APPSHEET_CONFIG.CUSTOMER_COLUMN];
+                        if (customerName && customerName.trim() !== '') {
+                            customerNames.add(customerName.trim());
                         }
                     });
                 }
@@ -265,9 +284,7 @@
         
         function formatPrice(price) {
             const num = parseFloat(price);
-            if (isNaN(num)) {
-                return '—';
-            }
+            if (isNaN(num)) return '—';
             return `$${num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
         }
         
@@ -340,7 +357,7 @@
                         const statusOptions = `<option value="Quoted" ${quote.status === 'Quoted' ? 'selected' : ''}>Quoted</option><option value="Sold at Quoted Price" ${quote.status === 'Sold at Quoted Price' ? 'selected' : ''}>Sold at Quoted Price</option><option value="Lost Sale" ${quote.status === 'Lost Sale' ? 'selected' : ''}>Lost Sale</option>`;
                         row.innerHTML = `
                             <td>${new Date(quote.date).toLocaleDateString()}</td>
-                            <td>${quote.sold}</td>
+                            <td>${quote.sold || 'N/A'}</td>
                             <td class="price-cell">${formatPrice(quote.outrightPrice)}</td>
                             <td class="price-cell">${formatPrice(quote.exchangePrice)}</td>
                             <td><select class="status-select" onchange="handleStatusChange(event, '${quote.id}')">${statusOptions}</select></td>`;
@@ -428,7 +445,7 @@
                     row.innerHTML = `
                         <td>${new Date(quote.date).toLocaleDateString()}</td>
                         <td>${quote.pn || 'N/A'}</td>
-                        <td>${quote.sold}</td>
+                        <td>${quote.sold || 'N/A'}</td>
                         <td class="price-cell">${formatPrice(quote.outrightPrice)}</td>
                         <td class="price-cell">${formatPrice(quote.exchangePrice)}</td>
                         <td><select class="status-select" onchange="handleStatusChange(event, '${quote.id}')">${statusOptions}</select></td>`;
