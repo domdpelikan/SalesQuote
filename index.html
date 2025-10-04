@@ -77,7 +77,7 @@
         .notes-cell button { font-size: 14px; color: #2d7a7f; background: none; border: none; padding: 4px; cursor: pointer; font-weight: 600; }
         .notes-cell button:hover { text-decoration: underline; }
         tbody tr:last-child td { border-bottom: none; }
-        #searchHistoryTable tbody tr:hover { background: #f0f9ff; cursor: pointer; } /* Highlight for clickable rows */
+        #searchHistoryTable tbody tr:hover { background: #f0f9ff; cursor: pointer; } 
         .no-history-message { display: none; text-align: center; padding: 32px; color: #9ca3af; font-size: 15px; }
         
         .action-button { background: none; border: none; cursor: pointer; padding: 4px; border-radius: 50%; }
@@ -144,7 +144,8 @@
                             <label for="status">Status:</label>
                             <select id="status" name="status" required>
                                 <option value="Quoted">Quoted</option>
-                                <option value="Sold at Quoted Price">Sold at Quoted Price</option>
+                                <option value="Sold at Quoted Price Outright">Sold at Quoted Price Outright</option>
+                                <option value="Sold at Quoted Price Exchange">Sold at Quoted Price Exchange</option>
                                 <option value="Lost Sale">Lost Sale</option>
                             </select>
                         </div>
@@ -160,7 +161,7 @@
                 <hr class="divider">
 
                 <section class="quote-history">
-                    <h3>Quote History for this Part</h3>
+                    <h3>Quote History for this Part (Latest 10)</h3>
                     <div class="history-container">
                         <table id="historyTable">
                             <thead>
@@ -192,7 +193,7 @@
                 <hr class="divider">
 
                 <section class="searchable-quote-history">
-                    <h3>Search All Quotes</h3>
+                    <h3>Search All Quotes (Latest 25)</h3>
                     <div class="form-group">
                         <input type="search" id="quoteSearchInput" placeholder="Search by PN, Sold To, or Item Name...">
                     </div>
@@ -246,7 +247,8 @@
                         <label for="editStatus">Status:</label>
                         <select id="editStatus" name="status" required>
                             <option value="Quoted">Quoted</option>
-                            <option value="Sold at Quoted Price">Sold at Quoted Price</option>
+                            <option value="Sold at Quoted Price Outright">Sold at Quoted Price Outright</option>
+                            <option value="Sold at Quoted Price Exchange">Sold at Quoted Price Exchange</option>
                             <option value="Lost Sale">Lost Sale</option>
                         </select>
                     </div>
@@ -314,7 +316,7 @@
             updateMainView(initialPartNumber, initialItemName);
             fetchCustomersFromAppSheet();
             fetchAllQuotesForSearch();
-            checkAndExpireQuotes(); // NEW: Run the check on page load
+            checkAndExpireQuotes(); 
 
             // Event Listeners
             document.getElementById('newQuoteForm').addEventListener('submit', handleFormSubmit);
@@ -448,7 +450,8 @@
                     <td class="price-cell">${formatPrice(quote.exchangePrice)}</td>
                     <td><select class="status-select" onchange="handleStatusChange(event, '${quote.id}')">
                         <option value="Quoted" ${quote.status === 'Quoted' ? 'selected' : ''}>Quoted</option>
-                        <option value="Sold at Quoted Price" ${quote.status === 'Sold at Quoted Price' ? 'selected' : ''}>Sold at Quoted Price</option>
+                        <option value="Sold at Quoted Price Outright" ${quote.status === 'Sold at Quoted Price Outright' ? 'selected' : ''}>Sold Outright</option>
+                        <option value="Sold at Quoted Price Exchange" ${quote.status === 'Sold at Quoted Price Exchange' ? 'selected' : ''}>Sold Exchange</option>
                         <option value="Lost Sale" ${quote.status === 'Lost Sale' ? 'selected' : ''}>Lost Sale</option>
                     </select></td>
                     <td class="notes-cell">
@@ -476,11 +479,12 @@
                     noHistoryMessage.style.display = 'none';
                     snapshot.forEach(childSnapshot => { quotes.push({ id: childSnapshot.key, ...childSnapshot.val() }); });
                     const sortedQuotes = quotes.sort((a, b) => new Date(b.date) - new Date(a.date));
-                    renderHistoryTable(historyBody, sortedQuotes);
+                    const latest10 = sortedQuotes.slice(0, 10); // Get only the latest 10
+                    renderHistoryTable(historyBody, latest10);
                 } else {
                     historyBody.innerHTML = ''; noHistoryMessage.style.display = 'block';
                 }
-                renderSalesHistoryGraph(quotes);
+                renderSalesHistoryGraph(quotes); // Graph uses all quotes
             });
         }
 
@@ -522,7 +526,12 @@
                 const quotes = snapshot.val();
                 if (quotes) {
                     allQuotesCache = Object.keys(quotes).map(key => ({ id: key, ...quotes[key] })).sort((a, b) => new Date(b.date) - new Date(a.date));
-                } else { allQuotesCache = []; }
+                    const latest25 = allQuotesCache.slice(0, 25); // Get latest 25 for initial display
+                    renderHistoryTable(document.getElementById('searchHistoryBody'), latest25, true);
+                } else { 
+                    allQuotesCache = [];
+                    document.getElementById('searchHistoryBody').innerHTML = '';
+                }
                 const searchTerm = document.getElementById('quoteSearchInput').value;
                 if (searchTerm) filterAndDisplayQuotes(searchTerm);
             });
@@ -532,7 +541,10 @@
             const searchHistoryBody = document.getElementById('searchHistoryBody');
             const noResultsMessage = document.getElementById('noSearchResultsMessage');
             if (!searchTerm) {
-                searchHistoryBody.innerHTML = ''; noResultsMessage.textContent = 'Type in the search bar to find quotes.'; noResultsMessage.style.display = 'block';
+                const latest25 = allQuotesCache.slice(0, 25);
+                renderHistoryTable(searchHistoryBody, latest25, true);
+                noResultsMessage.textContent = 'Type in the search bar to find quotes.';
+                noResultsMessage.style.display = allQuotesCache.length === 0 ? 'block' : 'none';
                 return;
             }
             const lowerCaseSearchTerm = searchTerm.toLowerCase();
@@ -625,7 +637,7 @@
             const noSalesDataMessage = document.getElementById('noSalesDataMessage');
             
             const soldQuotes = quotes
-                .filter(q => q.status === 'Sold at Quoted Price')
+                .filter(q => q.status === 'Sold at Quoted Price Outright' || q.status === 'Sold at Quoted Price Exchange')
                 .sort((a, b) => new Date(a.date) - new Date(b.date)); 
 
             if (soldQuotes.length === 0) {
@@ -641,14 +653,14 @@
             noSalesDataMessage.style.display = 'none';
 
             const labels = soldQuotes.map(q => new Date(q.date).toLocaleDateString());
-            const outrightData = soldQuotes.map(q => q.outrightPrice);
-            const exchangeData = soldQuotes.map(q => q.exchangePrice);
+            const outrightData = soldQuotes.map(q => q.status === 'Sold at Quoted Price Outright' ? q.outrightPrice : null);
+            const exchangeData = soldQuotes.map(q => q.status === 'Sold at Quoted Price Exchange' ? q.exchangePrice : null);
 
             const data = {
                 labels: labels,
                 datasets: [
                     {
-                        label: 'Outright Price',
+                        label: 'Outright Sale Price',
                         data: outrightData,
                         borderColor: '#2d7a7f',
                         backgroundColor: 'rgba(45, 122, 127, 0.1)',
@@ -656,7 +668,7 @@
                         tension: 0.1
                     },
                     {
-                        label: 'Exchange Price',
+                        label: 'Exchange Sale Price',
                         data: exchangeData,
                         borderColor: '#f39237',
                         backgroundColor: 'rgba(243, 146, 55, 0.1)',
@@ -706,7 +718,6 @@
             salesHistoryChart = new Chart(canvas, config);
         }
 
-        // NEW: Function to check for and expire old quotes
         async function checkAndExpireQuotes() {
             const quotesRef = database.ref('quotes');
             const sevenDaysAgo = Date.now() - (7 * 24 * 60 * 60 * 1000);
