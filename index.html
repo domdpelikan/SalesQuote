@@ -193,14 +193,30 @@
                 <hr class="divider">
 
                 <section class="searchable-quote-history">
-                    <h3>Search All Quotes (Latest 25)</h3>
+                    <h3>Search All Quotes</h3>
                     <div class="form-group">
                         <input type="search" id="quoteSearchInput" placeholder="Search by PN, Sold To, or Item Name...">
+                    </div>
+                    <div class="form-group" style="display: flex; justify-content: space-between; align-items: center; gap: 16px;">
+                        <div style="display: flex; align-items: center; gap: 12px;">
+                            <label for="resultsLimit" style="margin: 0; font-size: 14px;">Show:</label>
+                            <select id="resultsLimit" style="width: auto; padding: 8px 12px;">
+                                <option value="25">25 results</option>
+                                <option value="50">50 results</option>
+                                <option value="all">All results</option>
+                            </select>
+                        </div>
+                        <button id="generatePdfButton" type="button" style="width: auto; padding: 10px 24px; font-size: 14px;" disabled>
+                            Generate PDF (<span id="selectedCount">0</span> selected)
+                        </button>
                     </div>
                     <div class="history-container">
                         <table id="searchHistoryTable">
                             <thead>
                                 <tr>
+                                    <th style="width: 40px;">
+                                        <input type="checkbox" id="selectAllCheckbox" style="cursor: pointer;">
+                                    </th>
                                     <th>Date</th>
                                     <th>PN</th>
                                     <th>Sold</th>
@@ -272,6 +288,8 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
     
     <script>
         // --- START CONFIGURATION ---
@@ -301,6 +319,8 @@
         let soldListCache = [];
         let salesHistoryChart; 
         let currentHistoryListener = null;
+        let selectedQuotes = new Set();
+        let currentResultsLimit = 25;
 
         document.addEventListener('DOMContentLoaded', () => {
             const urlParams = new URLSearchParams(window.location.search);
@@ -321,6 +341,9 @@
             // Event Listeners
             document.getElementById('newQuoteForm').addEventListener('submit', handleFormSubmit);
             document.getElementById('quoteSearchInput').addEventListener('input', (e) => filterAndDisplayQuotes(e.target.value));
+            document.getElementById('resultsLimit').addEventListener('change', handleResultsLimitChange);
+            document.getElementById('selectAllCheckbox').addEventListener('change', handleSelectAll);
+            document.getElementById('generatePdfButton').addEventListener('click', generatePDF);
             
             ['outrightPrice', 'exchangePrice', 'editOutrightPrice', 'editExchangePrice'].forEach(id => {
                 document.getElementById(id).addEventListener('input', handleCurrencyInput);
@@ -334,7 +357,6 @@
                 if (e.target.id === 'editModal') closeEditModal();
             });
 
-            // --- THIS IS THE FIXED EVENT LISTENER ---
             document.body.addEventListener('click', (e) => {
                 const actionButton = e.target.closest('[data-action]');
                 if (actionButton) {
@@ -346,18 +368,15 @@
                     } else if (action === 'view-notes') {
                         alert(quote.notes || 'No notes for this quote.');
                     }
-                    return; // Action handled, so we exit
+                    return;
                 }
 
                 const searchRow = e.target.closest('#searchHistoryBody tr');
                 if (searchRow) {
-                    // Check if the click was on an interactive element like a select, button, etc.
-                    // If it was, we do nothing and let that element handle its own event.
-                    if (e.target.closest('select, button')) {
+                    if (e.target.closest('select, button, input[type="checkbox"]')) {
                         return;
                     }
 
-                    // If the click was on the row itself (but not an interactive element), then reload the view.
                     const pn = searchRow.dataset.pn;
                     const itemName = searchRow.dataset.itemName;
                     if (pn && itemName) {
@@ -450,7 +469,9 @@
                     row.dataset.itemName = quote.itemName || '';
                 }
                 const quoteData = JSON.stringify(quote).replace(/'/g, "&apos;");
+                const isChecked = selectedQuotes.has(quote.id);
                 let cells = `
+                    ${includePn ? `<td><input type="checkbox" class="quote-checkbox" data-quote-id="${quote.id}" ${isChecked ? 'checked' : ''} style="cursor: pointer;"></td>` : ''}
                     <td>${new Date(quote.date).toLocaleDateString()}</td>
                     ${includePn ? `<td>${quote.pn || 'N/A'}</td>` : ''}
                     <td>${quote.sold || 'N/A'}</td>
@@ -473,6 +494,12 @@
                 `;
                 row.innerHTML = cells;
             });
+            
+            if (includePn) {
+                document.querySelectorAll('.quote-checkbox').forEach(checkbox => {
+                    checkbox.addEventListener('change', handleCheckboxChange);
+                });
+            }
         }
 
         function listenForQuoteHistory(pn) {
@@ -487,12 +514,12 @@
                     noHistoryMessage.style.display = 'none';
                     snapshot.forEach(childSnapshot => { quotes.push({ id: childSnapshot.key, ...childSnapshot.val() }); });
                     const sortedQuotes = quotes.sort((a, b) => new Date(b.date) - new Date(a.date));
-                    const latest10 = sortedQuotes.slice(0, 10); // Get only the latest 10
+                    const latest10 = sortedQuotes.slice(0, 10);
                     renderHistoryTable(historyBody, latest10);
                 } else {
                     historyBody.innerHTML = ''; noHistoryMessage.style.display = 'block';
                 }
-                renderSalesHistoryGraph(quotes); // Graph uses all quotes
+                renderSalesHistoryGraph(quotes);
             });
         }
 
@@ -534,8 +561,8 @@
                 const quotes = snapshot.val();
                 if (quotes) {
                     allQuotesCache = Object.keys(quotes).map(key => ({ id: key, ...quotes[key] })).sort((a, b) => new Date(b.date) - new Date(a.date));
-                    const latest25 = allQuotesCache.slice(0, 25); // Get latest 25 for initial display
-                    renderHistoryTable(document.getElementById('searchHistoryBody'), latest25, true);
+                    const displayQuotes = getQuotesToDisplay();
+                    renderHistoryTable(document.getElementById('searchHistoryBody'), displayQuotes, true);
                 } else { 
                     allQuotesCache = [];
                     document.getElementById('searchHistoryBody').innerHTML = '';
@@ -545,12 +572,31 @@
             });
         }
 
+        function getQuotesToDisplay() {
+            if (currentResultsLimit === 'all') {
+                return allQuotesCache;
+            }
+            return allQuotesCache.slice(0, parseInt(currentResultsLimit));
+        }
+
+        function handleResultsLimitChange(event) {
+            currentResultsLimit = event.target.value;
+            const searchTerm = document.getElementById('quoteSearchInput').value;
+            if (searchTerm) {
+                filterAndDisplayQuotes(searchTerm);
+            } else {
+                const displayQuotes = getQuotesToDisplay();
+                renderHistoryTable(document.getElementById('searchHistoryBody'), displayQuotes, true);
+                document.getElementById('noSearchResultsMessage').style.display = allQuotesCache.length === 0 ? 'block' : 'none';
+            }
+        }
+
         function filterAndDisplayQuotes(searchTerm) {
             const searchHistoryBody = document.getElementById('searchHistoryBody');
             const noResultsMessage = document.getElementById('noSearchResultsMessage');
             if (!searchTerm) {
-                const latest25 = allQuotesCache.slice(0, 25);
-                renderHistoryTable(searchHistoryBody, latest25, true);
+                const displayQuotes = getQuotesToDisplay();
+                renderHistoryTable(searchHistoryBody, displayQuotes, true);
                 noResultsMessage.textContent = 'Type in the search bar to find quotes.';
                 noResultsMessage.style.display = allQuotesCache.length === 0 ? 'block' : 'none';
                 return;
@@ -561,9 +607,12 @@
                 (q.sold && q.sold.toLowerCase().includes(lowerCaseSearchTerm)) || 
                 (q.itemName && q.itemName.toLowerCase().includes(lowerCaseSearchTerm))
             );
-            if (filteredQuotes.length > 0) {
+            
+            const displayQuotes = currentResultsLimit === 'all' ? filteredQuotes : filteredQuotes.slice(0, parseInt(currentResultsLimit));
+            
+            if (displayQuotes.length > 0) {
                 noResultsMessage.style.display = 'none';
-                renderHistoryTable(searchHistoryBody, filteredQuotes, true);
+                renderHistoryTable(searchHistoryBody, displayQuotes, true);
             } else {
                 searchHistoryBody.innerHTML = ''; noResultsMessage.textContent = 'No quotes found matching your search.'; noResultsMessage.style.display = 'block';
             }
@@ -751,7 +800,147 @@
                 console.error("Error checking for expired quotes:", error);
             }
         }
+
+        function handleCheckboxChange(event) {
+            const checkbox = event.target;
+            const quoteId = checkbox.dataset.quoteId;
+            
+            if (checkbox.checked) {
+                selectedQuotes.add(quoteId);
+            } else {
+                selectedQuotes.delete(quoteId);
+            }
+            
+            updateSelectedCount();
+            updateSelectAllCheckbox();
+        }
+
+        function handleSelectAll(event) {
+            const isChecked = event.target.checked;
+            const checkboxes = document.querySelectorAll('.quote-checkbox');
+            
+            checkboxes.forEach(checkbox => {
+                checkbox.checked = isChecked;
+                const quoteId = checkbox.dataset.quoteId;
+                
+                if (isChecked) {
+                    selectedQuotes.add(quoteId);
+                } else {
+                    selectedQuotes.delete(quoteId);
+                }
+            });
+            
+            updateSelectedCount();
+        }
+
+        function updateSelectAllCheckbox() {
+            const selectAllCheckbox = document.getElementById('selectAllCheckbox');
+            const checkboxes = document.querySelectorAll('.quote-checkbox');
+            const checkedBoxes = document.querySelectorAll('.quote-checkbox:checked');
+            
+            if (checkboxes.length === 0) {
+                selectAllCheckbox.checked = false;
+                selectAllCheckbox.indeterminate = false;
+            } else if (checkedBoxes.length === checkboxes.length) {
+                selectAllCheckbox.checked = true;
+                selectAllCheckbox.indeterminate = false;
+            } else if (checkedBoxes.length > 0) {
+                selectAllCheckbox.checked = false;
+                selectAllCheckbox.indeterminate = true;
+            } else {
+                selectAllCheckbox.checked = false;
+                selectAllCheckbox.indeterminate = false;
+            }
+        }
+
+        function updateSelectedCount() {
+            const count = selectedQuotes.size;
+            document.getElementById('selectedCount').textContent = count;
+            document.getElementById('generatePdfButton').disabled = count === 0;
+        }
+
+        async function generatePDF() {
+            if (selectedQuotes.size === 0) {
+                alert('Please select at least one quote to generate a PDF.');
+                return;
+            }
+
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+            
+            const selected = allQuotesCache.filter(q => selectedQuotes.has(q.id));
+            
+            doc.setFontSize(24);
+            doc.setTextColor(45, 122, 127);
+            doc.text('iMED ALL inc.', 105, 20, { align: 'center' });
+            
+            doc.setFontSize(16);
+            doc.setTextColor(243, 146, 55);
+            doc.text('CT MRI PET/CT', 105, 30, { align: 'center' });
+            
+            doc.setFontSize(14);
+            doc.setTextColor(0, 0, 0);
+            doc.text('Sales Quote Summary', 105, 40, { align: 'center' });
+            
+            doc.setFontSize(10);
+            doc.setTextColor(100, 100, 100);
+            doc.text(`Generated: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`, 105, 48, { align: 'center' });
+            
+            const tableData = selected.map(quote => [
+                new Date(quote.date).toLocaleDateString(),
+                quote.pn || 'N/A',
+                quote.itemName || 'N/A',
+                quote.sold || 'N/A',
+                formatPrice(quote.outrightPrice),
+                formatPrice(quote.exchangePrice),
+                quote.status || 'N/A',
+                quote.notes || '—'
+            ]);
+            
+            doc.autoTable({
+                startY: 55,
+                head: [['Date', 'PN', 'Item Name', 'Sold To', 'Outright', 'Exchange', 'Status', 'Notes']],
+                body: tableData,
+                theme: 'striped',
+                headStyles: {
+                    fillColor: [45, 122, 127],
+                    textColor: [255, 255, 255],
+                    fontSize: 9,
+                    fontStyle: 'bold'
+                },
+                styles: {
+                    fontSize: 8,
+                    cellPadding: 3
+                },
+                columnStyles: {
+                    0: { cellWidth: 20 },
+                    1: { cellWidth: 25 },
+                    2: { cellWidth: 30 },
+                    3: { cellWidth: 25 },
+                    4: { cellWidth: 20 },
+                    5: { cellWidth: 20 },
+                    6: { cellWidth: 25 },
+                    7: { cellWidth: 25 }
+                },
+                margin: { left: 10, right: 10 }
+            });
+            
+            const pageCount = doc.internal.getNumberOfPages();
+            for (let i = 1; i <= pageCount; i++) {
+                doc.setPage(i);
+                doc.setFontSize(8);
+                doc.setTextColor(150, 150, 150);
+                doc.text(
+                    `Page ${i} of ${pageCount}`,
+                    doc.internal.pageSize.getWidth() / 2,
+                    doc.internal.pageSize.getHeight() - 10,
+                    { align: 'center' }
+                );
+            }
+            
+            const fileName = `iMED_Quotes_${new Date().toISOString().split('T')[0]}.pdf`;
+            doc.save(fileName);
+        }
     </script>
 </body>
 </html>
-
