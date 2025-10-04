@@ -965,7 +965,7 @@
                 startY: 44,
                 head: [headers],
                 body: tableData,
-                theme: 'striped',
+                theme: 'plain',  // Changed from 'striped' to 'plain' for more control
                 headStyles: {
                     fillColor: [45, 122, 127],
                     textColor: [255, 255, 255],
@@ -975,8 +975,12 @@
                 styles: {
                     fontSize: 9,
                     cellPadding: 4,
-                    lineColor: [220, 220, 220],  // Light gray border
-                    lineWidth: 0.5
+                    lineColor: [220, 220, 220],
+                    lineWidth: 0.5,
+                    fillColor: [240, 240, 240]  // Light gray for default rows
+                },
+                alternateRowStyles: {
+                    fillColor: [220, 220, 220]  // Medium gray for alternating rows
                 },
                 columnStyles: columnStyles,
                 margin: { left: 15, right: 15 }
