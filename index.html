@@ -334,6 +334,7 @@
                 if (e.target.id === 'editModal') closeEditModal();
             });
 
+            // --- THIS IS THE FIXED EVENT LISTENER ---
             document.body.addEventListener('click', (e) => {
                 const actionButton = e.target.closest('[data-action]');
                 if (actionButton) {
@@ -345,11 +346,18 @@
                     } else if (action === 'view-notes') {
                         alert(quote.notes || 'No notes for this quote.');
                     }
-                    return; 
+                    return; // Action handled, so we exit
                 }
 
                 const searchRow = e.target.closest('#searchHistoryBody tr');
                 if (searchRow) {
+                    // Check if the click was on an interactive element like a select, button, etc.
+                    // If it was, we do nothing and let that element handle its own event.
+                    if (e.target.closest('select, button')) {
+                        return;
+                    }
+
+                    // If the click was on the row itself (but not an interactive element), then reload the view.
                     const pn = searchRow.dataset.pn;
                     const itemName = searchRow.dataset.itemName;
                     if (pn && itemName) {
