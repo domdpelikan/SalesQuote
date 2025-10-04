@@ -962,7 +962,7 @@
             }
             
             doc.autoTable({
-                startY: 62,
+                startY: 44,
                 head: [headers],
                 body: tableData,
                 theme: 'striped',
@@ -974,7 +974,9 @@
                 },
                 styles: {
                     fontSize: 9,
-                    cellPadding: 4
+                    cellPadding: 4,
+                    lineColor: [220, 220, 220],  // Light gray border
+                    lineWidth: 0.5
                 },
                 columnStyles: columnStyles,
                 margin: { left: 15, right: 15 }
