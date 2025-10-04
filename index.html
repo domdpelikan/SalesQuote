@@ -870,6 +870,14 @@
             
             const selected = allQuotesCache.filter(q => selectedQuotes.has(q.id));
             
+            // Check if we have any outright or exchange prices
+            const hasOutright = selected.some(q => q.outrightPrice && !isNaN(parseFloat(q.outrightPrice)));
+            const hasExchange = selected.some(q => q.exchangePrice && !isNaN(parseFloat(q.exchangePrice)));
+            
+            // Generate quote number (timestamp-based)
+            const quoteNumber = `Q-${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, '0')}${String(new Date().getDate()).padStart(2, '0')}-${String(new Date().getHours()).padStart(2, '0')}${String(new Date().getMinutes()).padStart(2, '0')}${String(new Date().getSeconds()).padStart(2, '0')}`;
+            
+            // Header
             doc.setFontSize(24);
             doc.setTextColor(45, 122, 127);
             doc.text('iMED ALL inc.', 105, 20, { align: 'center' });
@@ -880,65 +888,177 @@
             
             doc.setFontSize(14);
             doc.setTextColor(0, 0, 0);
-            doc.text('Sales Quote Summary', 105, 40, { align: 'center' });
+            doc.text('QUOTE', 105, 42, { align: 'center' });
             
+            // Quote info
             doc.setFontSize(10);
             doc.setTextColor(100, 100, 100);
-            doc.text(`Generated: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`, 105, 48, { align: 'center' });
+            doc.text(`Quote Number: ${quoteNumber}`, 20, 52);
+            doc.text(`Date: ${new Date().toLocaleDateString()}`, 20, 58);
             
-            const tableData = selected.map(quote => [
-                new Date(quote.date).toLocaleDateString(),
-                quote.pn || 'N/A',
-                quote.itemName || 'N/A',
-                quote.sold || 'N/A',
-                formatPrice(quote.outrightPrice),
-                formatPrice(quote.exchangePrice),
-                quote.status || 'N/A',
-                quote.notes || '—'
-            ]);
+            // Calculate totals
+            let totalOutright = 0;
+            let totalExchange = 0;
             
+            selected.forEach(quote => {
+                if (quote.outrightPrice && !isNaN(parseFloat(quote.outrightPrice))) {
+                    totalOutright += parseFloat(quote.outrightPrice);
+                }
+                if (quote.exchangePrice && !isNaN(parseFloat(quote.exchangePrice))) {
+                    totalExchange += parseFloat(quote.exchangePrice);
+                }
+            });
+            
+            // Build table headers dynamically
+            const headers = ['Date', 'PN', 'Item Name', 'Customer'];
+            if (hasOutright) headers.push('Outright');
+            if (hasExchange) headers.push('Exchange');
+            
+            // Build table data
+            const tableData = selected.map(quote => {
+                const row = [
+                    new Date(quote.date).toLocaleDateString(),
+                    quote.pn || 'N/A',
+                    quote.itemName || 'N/A',
+                    quote.sold || 'N/A'
+                ];
+                
+                if (hasOutright) {
+                    row.push(formatPrice(quote.outrightPrice));
+                }
+                if (hasExchange) {
+                    row.push(formatPrice(quote.exchangePrice));
+                }
+                
+                return row;
+            });
+            
+            // Build column styles dynamically
+            const columnStyles = {
+                0: { cellWidth: 25 },  // Date
+                1: { cellWidth: 30 },  // PN
+                2: { cellWidth: 40 },  // Item Name
+                3: { cellWidth: 35 }   // Customer
+            };
+            
+            let colIndex = 4;
+            if (hasOutright) {
+                columnStyles[colIndex] = { cellWidth: 30 };
+                colIndex++;
+            }
+            if (hasExchange) {
+                columnStyles[colIndex] = { cellWidth: 30 };
+            }
+            
+            // Add table
             doc.autoTable({
-                startY: 55,
-                head: [['Date', 'PN', 'Item Name', 'Sold To', 'Outright', 'Exchange', 'Status', 'Notes']],
+                startY: 65,
+                head: [headers],
                 body: tableData,
                 theme: 'striped',
                 headStyles: {
                     fillColor: [45, 122, 127],
                     textColor: [255, 255, 255],
-                    fontSize: 9,
+                    fontSize: 10,
                     fontStyle: 'bold'
                 },
                 styles: {
-                    fontSize: 8,
-                    cellPadding: 3
+                    fontSize: 9,
+                    cellPadding: 4
                 },
-                columnStyles: {
-                    0: { cellWidth: 20 },
-                    1: { cellWidth: 25 },
-                    2: { cellWidth: 30 },
-                    3: { cellWidth: 25 },
-                    4: { cellWidth: 20 },
-                    5: { cellWidth: 20 },
-                    6: { cellWidth: 25 },
-                    7: { cellWidth: 25 }
-                },
-                margin: { left: 10, right: 10 }
+                columnStyles: columnStyles,
+                margin: { left: 15, right: 15 }
             });
             
-            const pageCount = doc.internal.getNumberOfPages();
-            for (let i = 1; i <= pageCount; i++) {
-                doc.setPage(i);
-                doc.setFontSize(8);
-                doc.setTextColor(150, 150, 150);
-                doc.text(
-                    `Page ${i} of ${pageCount}`,
-                    doc.internal.pageSize.getWidth() / 2,
-                    doc.internal.pageSize.getHeight() - 10,
-                    { align: 'center' }
-                );
+            // Get the Y position after the table
+            const finalY = doc.lastAutoTable.finalY;
+            
+            // Add totals
+            doc.setFontSize(12);
+            doc.setTextColor(0, 0, 0);
+            doc.setFont(undefined, 'bold');
+            
+            let totalsY = finalY + 10;
+            
+            if (hasOutright && totalOutright > 0) {
+                doc.text(`Total Outright Price: ${formatPrice(totalOutright)}`, 15, totalsY);
+                totalsY += 8;
             }
             
-            const fileName = `iMED_Quotes_${new Date().toISOString().split('T')[0]}.pdf`;
+            if (hasExchange && totalExchange > 0) {
+                doc.text(`Total Exchange Price: ${formatPrice(totalExchange)}`, 15, totalsY);
+            }
+            
+            // Add page numbers to first page
+            doc.setFontSize(8);
+            doc.setTextColor(150, 150, 150);
+            doc.setFont(undefined, 'normal');
+            doc.text('Page 1 of 2', doc.internal.pageSize.getWidth() / 2, doc.internal.pageSize.getHeight() - 10, { align: 'center' });
+            
+            // Add second page for Terms and Conditions
+            doc.addPage();
+            
+            doc.setFontSize(16);
+            doc.setTextColor(45, 122, 127);
+            doc.setFont(undefined, 'bold');
+            doc.text('Terms and Conditions', 105, 20, { align: 'center' });
+            
+            doc.setFontSize(10);
+            doc.setTextColor(0, 0, 0);
+            doc.setFont(undefined, 'normal');
+            
+            const terms = [
+                '1. VALIDITY: This quotation is valid for 30 days from the date of issue.',
+                '',
+                '2. PAYMENT TERMS: Payment is due upon delivery unless otherwise agreed in writing. We accept wire transfer, check, or certified funds.',
+                '',
+                '3. DELIVERY: Delivery times are estimated and not guaranteed. Title and risk of loss pass to the buyer upon delivery.',
+                '',
+                '4. WARRANTY: All equipment is sold "as-is" unless otherwise specified. Any manufacturer warranties will be transferred to the buyer where applicable.',
+                '',
+                '5. INSPECTION: Buyer has 48 hours from delivery to inspect equipment and report any discrepancies or damage.',
+                '',
+                '6. EXCHANGE TERMS: Exchange pricing requires the return of comparable equipment in working condition. Exchange equipment must be received and inspected before final pricing is confirmed.',
+                '',
+                '7. CANCELLATION: Cancellations must be made in writing. Custom orders or special procurements may be subject to a restocking fee.',
+                '',
+                '8. INSTALLATION: Installation and training services are available at additional cost unless specifically included in this quote.',
+                '',
+                '9. TAXES AND FEES: Prices do not include applicable sales tax, shipping, or installation fees unless otherwise stated.',
+                '',
+                '10. ACCEPTANCE: This quote becomes a binding agreement when signed by both parties or when payment is received.',
+                '',
+                '11. GOVERNING LAW: This agreement shall be governed by the laws of the state in which the buyer is located.',
+                '',
+                '',
+                'CUSTOMER ACCEPTANCE',
+                '',
+                'Authorized Signature: _______________________________    Date: ______________',
+                '',
+                'Print Name: _______________________________    Title: ______________'
+            ];
+            
+            let yPosition = 35;
+            const lineHeight = 6;
+            const pageHeight = doc.internal.pageSize.getHeight();
+            const bottomMargin = 20;
+            
+            terms.forEach(line => {
+                if (yPosition > pageHeight - bottomMargin) {
+                    doc.addPage();
+                    yPosition = 20;
+                }
+                
+                doc.text(line, 15, yPosition, { maxWidth: 180 });
+                yPosition += lineHeight;
+            });
+            
+            // Page number for second page
+            doc.setFontSize(8);
+            doc.setTextColor(150, 150, 150);
+            doc.text('Page 2 of 2', doc.internal.pageSize.getWidth() / 2, doc.internal.pageSize.getHeight() - 10, { align: 'center' });
+            
+            const fileName = `iMED_Quote_${quoteNumber}.pdf`;
             doc.save(fileName);
         }
     </script>
