@@ -71,13 +71,36 @@
         table { width: 100%; border-collapse: collapse; }
         thead { background: #f3f4f6; }
         th { text-align: left; padding: 12px; font-weight: 600; color: #374151; font-size: 14px; border-bottom: 2px solid #e5e7eb; }
-        td { padding: 12px; color: #4b5563; font-size: 14px; border-bottom: 1px solid #e5e7eb; }
+        td { padding: 12px; color: #4b5563; font-size: 14px; border-bottom: 1px solid #e5e7eb; vertical-align: middle; }
         .price-cell { min-width: 120px; }
         .status-select { padding: 6px 8px; border: 1px solid #d1d5db; border-radius: 6px; background-color: white; font-family: 'Inter', sans-serif; font-size: 14px; width: 100%; min-width: 150px; }
         .status-select:focus { outline: none; border-color: #2d7a7f; box-shadow: 0 0 0 2px rgba(45, 122, 127, 0.1); }
         tbody tr:last-child td { border-bottom: none; }
         tbody tr:hover { background: #f9fafb; }
         .no-history-message { display: none; text-align: center; padding: 32px; color: #9ca3af; font-size: 15px; }
+        
+        /* Action Button Styles */
+        .action-button { background: none; border: none; cursor: pointer; padding: 4px; border-radius: 50%; }
+        .action-button:hover { background-color: #e5e7eb; }
+        .action-button svg { width: 20px; height: 20px; color: #6b7280; }
+
+        /* Modal Styles */
+        .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.6); display: flex; align-items: center; justify-content: center; z-index: 1000; opacity: 0; pointer-events: none; transition: opacity 0.3s ease; }
+        .modal-overlay.visible { opacity: 1; pointer-events: auto; }
+        .modal-content { background: white; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.2); width: 90%; max-width: 500px; transform: scale(0.95); transition: transform 0.3s ease; }
+        .modal-overlay.visible .modal-content { transform: scale(1); }
+        .modal-header { padding: 20px; border-bottom: 1px solid #e5e7eb; }
+        .modal-header h4 { font-size: 18px; font-weight: 600; }
+        .modal-body { padding: 20px; }
+        .modal-footer { padding: 15px 20px; border-top: 1px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center; }
+        .modal-footer .btn-secondary { background: #e5e7eb; color: #374151; font-weight: 600; padding: 10px 20px; }
+        .modal-footer .btn-secondary:hover { background: #d1d5db; }
+        .modal-footer .btn-danger { background: #ef4444; color: white; font-weight: 600; padding: 10px 20px; }
+        .modal-footer .btn-danger:hover { background: #dc2626; }
+        .modal-footer .btn-primary { background: #2d7a7f; color: white; font-weight: 600; padding: 10px 20px; }
+        .modal-footer .btn-primary:hover { background: #1f5a5e; }
+
+
         @media (max-width: 640px) {
             .card-header h1 { font-size: 24px; }
             .card-header h2 { font-size: 16px; }
@@ -148,6 +171,7 @@
                                     <th class="price-cell">Outright</th>
                                     <th class="price-cell">Exchange</th>
                                     <th>Status</th>
+                                    <th>Actions</th>
                                 </tr>
                             </thead>
                             <tbody id="historyBody"></tbody>
@@ -173,6 +197,7 @@
                                     <th class="price-cell">Outright</th>
                                     <th class="price-cell">Exchange</th>
                                     <th>Status</th>
+                                    <th>Actions</th>
                                 </tr>
                             </thead>
                             <tbody id="searchHistoryBody"></tbody>
@@ -180,6 +205,49 @@
                         <p id="noSearchResultsMessage" class="no-history-message">Type in the search bar to find quotes.</p>
                     </div>
                 </section>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Modal HTML -->
+    <div id="editModal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h4>Edit Quote</h4>
+            </div>
+            <div class="modal-body">
+                <form id="editQuoteForm">
+                    <input type="hidden" id="editQuoteId">
+                    <div class="form-group">
+                        <label for="editSoldTo">Sold:</label>
+                        <select id="editSoldTo" name="sold" required></select>
+                    </div>
+                    <div class="price-group">
+                        <div class="form-group">
+                            <label for="editOutrightPrice">Outright Quote ($):</label>
+                            <input type="text" id="editOutrightPrice" name="outrightPrice">
+                        </div>
+                        <div class="form-group">
+                            <label for="editExchangePrice">Exchange Quote ($):</label>
+                            <input type="text" id="editExchangePrice" name="exchangePrice">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="editStatus">Status:</label>
+                        <select id="editStatus" name="status" required>
+                            <option value="Quoted">Quoted</option>
+                            <option value="Sold at Quoted Price">Sold at Quoted Price</option>
+                            <option value="Lost Sale">Lost Sale</option>
+                        </select>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" id="deleteQuoteButton" class="btn-danger">Delete</button>
+                <div>
+                    <button type="button" id="cancelEditButton" class="btn-secondary">Cancel</button>
+                    <button type="button" id="saveEditButton" class="btn-primary">Save Changes</button>
+                </div>
             </div>
         </div>
     </div>
@@ -213,6 +281,7 @@
         const database = firebase.database();
 
         let allQuotesCache = [];
+        let soldListCache = [];
 
         document.addEventListener('DOMContentLoaded', () => {
             const urlParams = new URLSearchParams(window.location.search);
@@ -222,23 +291,39 @@
             document.getElementById('itemName').textContent = itemName || 'N/A';
             document.getElementById('partNumber').textContent = partNumber || 'N/A';
             
-            if (!partNumber) {
-                return;
-            }
+            if (!partNumber) { return; }
             
             fetchCustomersFromAppSheet();
             listenForQuoteHistory(partNumber);
-            
-            document.getElementById('newQuoteForm').addEventListener('submit', handleFormSubmit);
             fetchAllQuotesForSearch();
-            document.getElementById('quoteSearchInput').addEventListener('input', (e) => {
-                filterAndDisplayQuotes(e.target.value);
-            });
+
+            // Event Listeners
+            document.getElementById('newQuoteForm').addEventListener('submit', handleFormSubmit);
+            document.getElementById('quoteSearchInput').addEventListener('input', (e) => filterAndDisplayQuotes(e.target.value));
             
-            document.getElementById('outrightPrice').addEventListener('input', handleCurrencyInput);
-            document.getElementById('exchangePrice').addEventListener('input', handleCurrencyInput);
-            document.getElementById('outrightPrice').addEventListener('blur', handleCurrencyBlur);
-            document.getElementById('exchangePrice').addEventListener('blur', handleCurrencyBlur);
+            // Currency formatting listeners
+            ['outrightPrice', 'exchangePrice', 'editOutrightPrice', 'editExchangePrice'].forEach(id => {
+                const el = document.getElementById(id);
+                el.addEventListener('input', handleCurrencyInput);
+                el.addEventListener('blur', handleCurrencyBlur);
+            });
+
+            // Modal listeners
+            document.getElementById('cancelEditButton').addEventListener('click', closeEditModal);
+            document.getElementById('saveEditButton').addEventListener('click', handleEditFormSubmit);
+            document.getElementById('deleteQuoteButton').addEventListener('click', handleDeleteQuote);
+            document.getElementById('editModal').addEventListener('click', (e) => {
+                if (e.target.id === 'editModal') closeEditModal(); // Close if clicking on overlay
+            });
+
+            // Event delegation for edit buttons
+            document.body.addEventListener('click', (e) => {
+                const editButton = e.target.closest('[data-action="edit-quote"]');
+                if (editButton) {
+                    const quote = JSON.parse(editButton.dataset.quote);
+                    openEditModal(quote);
+                }
+            });
         });
 
         async function fetchCustomersFromAppSheet() {
@@ -253,10 +338,7 @@
                     body: JSON.stringify({ "Action": "Find", "Properties": {}, "Rows": [] })
                 });
 
-                if (!response.ok) {
-                    const errorText = await response.text();
-                    throw new Error(`Failed to fetch customers: ${response.status} ${errorText}`);
-                }
+                if (!response.ok) throw new Error(`Failed to fetch customers: ${response.statusText}`);
                 const data = await response.json();
                 
                 customerSelect.innerHTML = '<option value="" disabled selected>Select from Sold List...</option>';
@@ -264,17 +346,15 @@
                 if (Array.isArray(data)) {
                     data.forEach(item => {
                         const customerName = item[APPSHEET_CONFIG.CUSTOMER_COLUMN];
-                        if (customerName && customerName.trim() !== '') {
-                            customerNames.add(customerName.trim());
-                        }
+                        if (customerName && customerName.trim() !== '') customerNames.add(customerName.trim());
                     });
                 }
-                const sortedNames = Array.from(customerNames).sort();
-                sortedNames.forEach(name => {
+                soldListCache = Array.from(customerNames).sort();
+                soldListCache.forEach(name => {
                     const option = document.createElement('option');
                     option.value = name; 
                     option.textContent = name;
-                    customerSelect.appendChild(option);
+                    customerSelect.appendChild(option.cloneNode(true));
                 });
             } catch (error) {
                 console.error("Error fetching customers:", error);
@@ -289,45 +369,31 @@
         }
         
         function handleCurrencyInput(event) {
+            // This function remains the same as the previous version
             const input = event.target;
             let value = input.value;
             let cursorPosition = input.selectionStart;
-
             const commasBefore = (value.substring(0, cursorPosition).match(/,/g) || []).length;
             let numericValue = value.replace(/[^0-9.]/g, '');
-            
             const parts = numericValue.split('.');
-            if (parts.length > 2) {
-                numericValue = parts[0] + '.' + parts.slice(1).join('');
-            }
-
+            if (parts.length > 2) numericValue = parts[0] + '.' + parts.slice(1).join('');
             const [integerPart, decimalPart] = numericValue.split('.');
             const formattedInteger = integerPart.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-            
             let finalValue = formattedInteger;
-            if (decimalPart !== undefined) {
-                finalValue += '.' + decimalPart.substring(0, 2);
-            }
-
+            if (decimalPart !== undefined) finalValue += '.' + decimalPart.substring(0, 2);
             input.value = finalValue;
-
             const commasAfter = (input.value.substring(0, cursorPosition).match(/,/g) || []).length;
-            const commaDifference = commasAfter - commasBefore;
-            cursorPosition += commaDifference;
-            
+            cursorPosition += (commasAfter - commasBefore);
             if(cursorPosition < 0) cursorPosition = 0;
-            if(cursorPosition > finalValue.length) cursorPosition = finalValue.length;
-
             input.setSelectionRange(cursorPosition, cursorPosition);
         }
         
         function handleCurrencyBlur(event) {
+            // This function remains the same as the previous version
             const input = event.target;
             let value = input.value;
             if (value === '') return;
-            
             const numericValue = parseFloat(value.replace(/,/g, ''));
-            
             if (!isNaN(numericValue)) {
                 input.value = numericValue.toLocaleString('en-US', {
                     minimumFractionDigits: 2,
@@ -338,13 +404,38 @@
             }
         }
 
+        function renderHistoryTable(tableBody, quotes, includePn = false) {
+            tableBody.innerHTML = '';
+            quotes.forEach(quote => {
+                const row = tableBody.insertRow();
+                const quoteData = JSON.stringify(quote);
+                let cells = `
+                    <td>${new Date(quote.date).toLocaleDateString()}</td>
+                    ${includePn ? `<td>${quote.pn || 'N/A'}</td>` : ''}
+                    <td>${quote.sold || 'N/A'}</td>
+                    <td class="price-cell">${formatPrice(quote.outrightPrice)}</td>
+                    <td class="price-cell">${formatPrice(quote.exchangePrice)}</td>
+                    <td><select class="status-select" onchange="handleStatusChange(event, '${quote.id}')">
+                        <option value="Quoted" ${quote.status === 'Quoted' ? 'selected' : ''}>Quoted</option>
+                        <option value="Sold at Quoted Price" ${quote.status === 'Sold at Quoted Price' ? 'selected' : ''}>Sold at Quoted Price</option>
+                        <option value="Lost Sale" ${quote.status === 'Lost Sale' ? 'selected' : ''}>Lost Sale</option>
+                    </select></td>
+                    <td>
+                        <button class="action-button" data-action="edit-quote" data-quote='${quoteData}'>
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6.75 12a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Zm.75 0a.75.75 0 1 0-1.5 0 .75.75 0 0 0 1.5 0Zm4.5.75a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5Zm0-.75a.75.75 0 1 1 0-1.5.75.75 0 0 1 0 1.5Zm3.75.75a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5Zm0-.75a.75.75 0 1 1 0-1.5.75.75 0 0 1 0 1.5Z" /></svg>
+                        </button>
+                    </td>
+                `;
+                row.innerHTML = cells;
+            });
+        }
+
         function listenForQuoteHistory(pn) {
             const quotesRef = database.ref('quotes');
             const historyBody = document.getElementById('historyBody');
             const noHistoryMessage = document.getElementById('noHistoryMessage');
             
             quotesRef.orderByChild('pn').equalTo(pn).on('value', (snapshot) => {
-                historyBody.innerHTML = '';
                 if (snapshot.exists()) {
                     noHistoryMessage.style.display = 'none';
                     let quotes = [];
@@ -352,30 +443,21 @@
                         quotes.push({ id: childSnapshot.key, ...childSnapshot.val() });
                     });
                     const sortedQuotes = quotes.sort((a, b) => new Date(b.date) - new Date(a.date));
-                    sortedQuotes.forEach(quote => {
-                        const row = historyBody.insertRow();
-                        const statusOptions = `<option value="Quoted" ${quote.status === 'Quoted' ? 'selected' : ''}>Quoted</option><option value="Sold at Quoted Price" ${quote.status === 'Sold at Quoted Price' ? 'selected' : ''}>Sold at Quoted Price</option><option value="Lost Sale" ${quote.status === 'Lost Sale' ? 'selected' : ''}>Lost Sale</option>`;
-                        row.innerHTML = `
-                            <td>${new Date(quote.date).toLocaleDateString()}</td>
-                            <td>${quote.sold || 'N/A'}</td>
-                            <td class="price-cell">${formatPrice(quote.outrightPrice)}</td>
-                            <td class="price-cell">${formatPrice(quote.exchangePrice)}</td>
-                            <td><select class="status-select" onchange="handleStatusChange(event, '${quote.id}')">${statusOptions}</select></td>`;
-                    });
+                    renderHistoryTable(historyBody, sortedQuotes);
                 } else {
+                    historyBody.innerHTML = '';
                     noHistoryMessage.style.display = 'block';
                 }
             });
         }
 
         async function handleFormSubmit(event) {
+            // This function remains the same
             event.preventDefault();
             const form = event.target;
             const formData = new FormData(form);
-            
             const outrightPriceValue = formData.get('outrightPrice').replace(/,/g, '');
             const exchangePriceValue = formData.get('exchangePrice').replace(/,/g, '');
-            
             const newQuote = {
                 pn: document.getElementById('partNumber').textContent,
                 itemName: document.getElementById('itemName').textContent,
@@ -385,7 +467,6 @@
                 status: formData.get('status'),
                 date: new Date().toISOString()
             };
-            
             const messageEl = document.getElementById('formMessage');
             const submitButton = document.getElementById('submitButton');
             submitButton.disabled = true;
@@ -409,6 +490,7 @@
         }
 
         function fetchAllQuotesForSearch() {
+            // Sorting is added here to ensure the cache is always sorted
             const quotesRef = database.ref('quotes');
             quotesRef.on('value', (snapshot) => {
                 const quotes = snapshot.val();
@@ -425,8 +507,8 @@
         function filterAndDisplayQuotes(searchTerm) {
             const searchHistoryBody = document.getElementById('searchHistoryBody');
             const noResultsMessage = document.getElementById('noSearchResultsMessage');
-            searchHistoryBody.innerHTML = '';
             if (!searchTerm) {
+                searchHistoryBody.innerHTML = '';
                 noResultsMessage.textContent = 'Type in the search bar to find quotes.';
                 noResultsMessage.style.display = 'block';
                 return;
@@ -439,24 +521,16 @@
             );
             if (filteredQuotes.length > 0) {
                 noResultsMessage.style.display = 'none';
-                filteredQuotes.forEach(quote => {
-                    const row = searchHistoryBody.insertRow();
-                    const statusOptions = `<option value="Quoted" ${quote.status === 'Quoted' ? 'selected' : ''}>Quoted</option><option value="Sold at Quoted Price" ${quote.status === 'Sold at Quoted Price' ? 'selected' : ''}>Sold at Quoted Price</option><option value="Lost Sale" ${quote.status === 'Lost Sale' ? 'selected' : ''}>Lost Sale</option>`;
-                    row.innerHTML = `
-                        <td>${new Date(quote.date).toLocaleDateString()}</td>
-                        <td>${quote.pn || 'N/A'}</td>
-                        <td>${quote.sold || 'N/A'}</td>
-                        <td class="price-cell">${formatPrice(quote.outrightPrice)}</td>
-                        <td class="price-cell">${formatPrice(quote.exchangePrice)}</td>
-                        <td><select class="status-select" onchange="handleStatusChange(event, '${quote.id}')">${statusOptions}</select></td>`;
-                });
+                renderHistoryTable(searchHistoryBody, filteredQuotes, true);
             } else {
+                searchHistoryBody.innerHTML = '';
                 noResultsMessage.textContent = 'No quotes found matching your search.';
                 noResultsMessage.style.display = 'block';
             }
         }
 
         function handleStatusChange(event, quoteId) {
+            // This function remains the same
             const newStatus = event.target.value;
             const selectElement = event.target;
             database.ref('quotes/' + quoteId).update({ status: newStatus })
@@ -470,6 +544,77 @@
                     setTimeout(() => { selectElement.style.borderColor = '#d1d5db'; }, 2000);
                 });
         }
+
+        // --- NEW MODAL FUNCTIONS ---
+        function openEditModal(quote) {
+            const modal = document.getElementById('editModal');
+            document.getElementById('editQuoteId').value = quote.id;
+            
+            // Populate Sold To dropdown
+            const soldToSelect = document.getElementById('editSoldTo');
+            soldToSelect.innerHTML = '';
+            soldListCache.forEach(name => {
+                const option = document.createElement('option');
+                option.value = name;
+                option.textContent = name;
+                if (name === quote.sold) {
+                    option.selected = true;
+                }
+                soldToSelect.appendChild(option);
+            });
+
+            // Populate other fields
+            const outright = quote.outrightPrice ? quote.outrightPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '';
+            const exchange = quote.exchangePrice ? quote.exchangePrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '';
+            document.getElementById('editOutrightPrice').value = outright;
+            document.getElementById('editExchangePrice').value = exchange;
+            document.getElementById('editStatus').value = quote.status;
+            
+            modal.classList.add('visible');
+        }
+
+        function closeEditModal() {
+            document.getElementById('editModal').classList.remove('visible');
+        }
+
+        async function handleEditFormSubmit() {
+            const quoteId = document.getElementById('editQuoteId').value;
+            if (!quoteId) return;
+
+            const outrightPriceValue = document.getElementById('editOutrightPrice').value.replace(/,/g, '');
+            const exchangePriceValue = document.getElementById('editExchangePrice').value.replace(/,/g, '');
+
+            const updatedQuote = {
+                sold: document.getElementById('editSoldTo').value,
+                outrightPrice: outrightPriceValue ? parseFloat(outrightPriceValue) : null,
+                exchangePrice: exchangePriceValue ? parseFloat(exchangePriceValue) : null,
+                status: document.getElementById('editStatus').value,
+            };
+
+            try {
+                await database.ref('quotes/' + quoteId).update(updatedQuote);
+                closeEditModal();
+            } catch (error) {
+                console.error("Error updating quote:", error);
+                alert("Failed to update quote. See console for details.");
+            }
+        }
+
+        async function handleDeleteQuote() {
+            const quoteId = document.getElementById('editQuoteId').value;
+            if (!quoteId) return;
+
+            if (confirm("Are you sure you want to delete this quote permanently?")) {
+                try {
+                    await database.ref('quotes/' + quoteId).remove();
+                    closeEditModal();
+                } catch (error) {
+                    console.error("Error deleting quote:", error);
+                    alert("Failed to delete quote. See console for details.");
+                }
+            }
+        }
+
     </script>
 </body>
 </html>
