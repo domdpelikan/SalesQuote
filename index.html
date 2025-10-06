@@ -1475,12 +1475,48 @@ async function fetchCustomersFromAppSheet() {
             });
         }
         
-        soldListCache = Array.from(customerNames).sort();
-        soldListCache.forEach(name => {
+        const allCustomers = Array.from(customerNames);
+        
+        // Sort entire list by most recently used
+        if (allQuotesCache.length > 0) {
+            const customerLastUsed = new Map();
+            
+            // Find the most recent date for each customer
+            allQuotesCache.forEach(quote => {
+                if (quote.sold) {
+                    const quoteDate = new Date(quote.date).getTime();
+                    const existingDate = customerLastUsed.get(quote.sold);
+                    
+                    if (!existingDate || quoteDate > existingDate) {
+                        customerLastUsed.set(quote.sold, quoteDate);
+                    }
+                }
+            });
+            
+            // Sort: most recently used first, never used alphabetically at bottom
+            allCustomers.sort((a, b) => {
+                const aDate = customerLastUsed.get(a) || 0;
+                const bDate = customerLastUsed.get(b) || 0;
+                
+                if (aDate === 0 && bDate === 0) {
+                    return a.localeCompare(b); // Alphabetical if neither used
+                }
+                if (aDate === 0) return 1; // Never used goes to bottom
+                if (bDate === 0) return -1;
+                
+                return bDate - aDate; // Most recent first
+            });
+        } else {
+            allCustomers.sort(); // Alphabetical if no quotes yet
+        }
+        
+        soldListCache = allCustomers;
+        
+        allCustomers.forEach(name => {
             const option = document.createElement('option');
             option.value = name;
             option.textContent = name;
-            customerSelect.appendChild(option.cloneNode(true));
+            customerSelect.appendChild(option);
         });
     } catch (error) {
         console.error("Error fetching customers:", error);
