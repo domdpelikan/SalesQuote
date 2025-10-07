@@ -71,9 +71,10 @@
         .history-container { background: #f9fafb; border: 2px solid #e5e7eb; border-radius: 8px; padding: 16px; overflow-x: auto; }
         table { width: 100%; border-collapse: collapse; }
         thead { background: #f3f4f6; }
-        th { text-align: left; padding: 12px; font-weight: 600; color: #374151; font-size: 14px; border-bottom: 2px solid #e5e7eb; }
+        th { text-align: left; padding: 12px; font-weight: 600; color: #374151; font-size: 14px; border-bottom: 2px solid #e5e7eb; white-space: nowrap; }
         td { padding: 12px; color: #4b5563; font-size: 14px; border-bottom: 1px solid #e5e7eb; vertical-align: middle; }
         .price-cell { min-width: 120px; }
+        .status-cell { min-width: 180px; }
         .notes-cell button { font-size: 14px; color: #2d7a7f; background: none; border: none; padding: 4px; cursor: pointer; font-weight: 600; }
         .notes-cell button:hover { text-decoration: underline; }
         tbody tr:last-child td { border-bottom: none; }
@@ -95,6 +96,52 @@
         .modal-footer .btn-secondary { background: #e5e7eb; color: #374151; }
         .modal-footer .btn-danger { background: #ef4444; color: white; }
         .modal-footer .btn-primary { background: #2d7a7f; color: white; }
+
+        .hot-item-badge {
+            display: inline-block;
+            background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%);
+            color: white;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-left: 8px;
+            box-shadow: 0 2px 4px rgba(255, 107, 107, 0.3);
+        }
+
+        .filter-buttons {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+        }
+
+        .filter-btn {
+            background: white;
+            border: 2px solid #e5e7eb;
+            color: #374151;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            width: auto;
+        }
+
+        .filter-btn:hover {
+            border-color: #2d7a7f;
+            background: #f0f9ff;
+            transform: none;
+        }
+
+        .filter-btn.active {
+            background: #2d7a7f;
+            color: white;
+            border-color: #2d7a7f;
+        }
 
         @media (max-width: 640px) {
             .card-header h1 { font-size: 24px; }
@@ -122,7 +169,7 @@
                         </button>
                     </div>
                     <div id="autoItemDetails">
-                        <p><strong>Name:</strong> <span id="itemName">Loading...</span></p>
+                        <p><strong>Name:</strong> <span id="itemName">Loading...</span><span id="hotItemBadge"></span></p>
                         <p><strong>Part Number:</strong> <span id="partNumber">...</span></p>
                     </div>
                     <div id="manualItemDetails" style="display: none;">
@@ -202,7 +249,7 @@
                                     <th>Sold</th>
                                     <th class="price-cell">Exchange</th>
                                     <th class="price-cell">Outright</th>
-                                    <th>Status</th>
+                                    <th class="status-cell">Status</th>
                                     <th>Notes</th>
                                     <th>Actions</th>
                                 </tr>
@@ -225,18 +272,26 @@
                 <hr class="divider">
 
                 <section class="searchable-quote-history">
-                    <h3>Search All Quotes</h3>
+                    <h3 onclick="toggleSearchSection()" style="cursor: pointer; display: flex; justify-content: space-between; align-items: center;">
+                        <span>Search All Quotes</span>
+                        <span id="searchToggleIcon" style="font-size: 20px;">▼</span>
+                    </h3>
+                    <div id="searchQuotesContent">
+                    
+
                     <div class="form-group">
                         <input type="search" id="quoteSearchInput" placeholder="Search by PN, Sold To, or Item Name...">
                     </div>
-                    <div class="form-group" style="display: flex; justify-content: space-between; align-items: center; gap: 16px;">
-                        <div style="display: flex; align-items: center; gap: 12px;">
+                    <div class="form-group" style="display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap;">
+                        <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap; flex: 1;">
                             <label for="resultsLimit" style="margin: 0; font-size: 14px;">Show:</label>
                             <select id="resultsLimit" style="width: auto; padding: 8px 12px;">
+                                <option value="10">10 results</option>
                                 <option value="25">25 results</option>
                                 <option value="50">50 results</option>
                                 <option value="all">All results</option>
                             </select>
+                            
                         </div>
                         <div style="display: flex; gap: 8px;">
                             <button id="copySelectedButton" type="button" style="width: auto; padding: 10px 24px; font-size: 14px;" disabled onclick="copySelectedQuotes()">
@@ -259,7 +314,7 @@
                                     <th>Sold</th>
                                     <th class="price-cell">Exchange</th>
                                     <th class="price-cell">Outright</th>
-                                    <th>Status</th>
+                                    <th class="status-cell">Status</th>
                                     <th>Notes</th>
                                     <th>Actions</th>
                                 </tr>
@@ -267,6 +322,7 @@
                             <tbody id="searchHistoryBody"></tbody>
                         </table>
                         <p id="noSearchResultsMessage" class="no-history-message">Type in the search bar to find quotes.</p>
+                    </div>
                     </div>
                 </section>
 
@@ -375,9 +431,11 @@ let currentResultsLimit = 25;
 let selectedWarrantyDays = 60;
 let customWarrantyDays = '';
 let currentPriceHistoryPn = null;
+let currentTimeFilter = 'all';
 
 firebase.initializeApp(firebaseConfig);
 const database = firebase.database();
+
 document.addEventListener('DOMContentLoaded', () => {
     const urlParams = new URLSearchParams(window.location.search);
     const initialPartNumber = urlParams.get('pn');
@@ -427,6 +485,19 @@ function toggleManualEntry() {
     }
 }
 
+function toggleSearchSection() {
+    const content = document.getElementById('searchQuotesContent');
+    const icon = document.getElementById('searchToggleIcon');
+    
+    if (content.style.display === 'none') {
+        content.style.display = 'block';
+        icon.textContent = '▼';
+    } else {
+        content.style.display = 'none';
+        icon.textContent = '►';
+    }
+}
+
 function handleWarrantyChange() {
     const select = document.getElementById('warrantyDays');
     const customGroup = document.getElementById('customWarrantyGroup');
@@ -448,7 +519,6 @@ function getWarrantyDays() {
     }
     return parseInt(select.value);
 }
-
 async function handleFormSubmit(event) {
     event.preventDefault();
     const form = event.target;
@@ -513,6 +583,7 @@ function formatPrice(price) {
     return `$${num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+
 function handleCurrencyInput(event) {
     const input = event.target;
     let value = input.value;
@@ -550,16 +621,83 @@ function handleCurrencyBlur(event) {
     }
 }
 
+function handleTimeFilter(filter) {
+    currentTimeFilter = filter;
+    
+    // Update active button
+    document.querySelectorAll('.filter-btn').forEach(btn => {
+        btn.classList.remove('active');
+    });
+    event.target.classList.add('active');
+    
+    // Re-run the current search with the new filter
+    const searchTerm = document.getElementById('quoteSearchInput').value;
+    filterAndDisplayQuotes(searchTerm);
+}
+
+function getFilteredQuotesByTime(quotes) {
+    if (currentTimeFilter === 'all') {
+        return quotes;
+    }
+    
+    const now = Date.now();
+    let cutoffDate;
+    
+    switch(currentTimeFilter) {
+        case '7days':
+            cutoffDate = now - (7 * 24 * 60 * 60 * 1000);
+            break;
+        case 'month':
+            cutoffDate = now - (30 * 24 * 60 * 60 * 1000);
+            break;
+        case 'year':
+            cutoffDate = now - (365 * 24 * 60 * 60 * 1000);
+            break;
+        default:
+            return quotes;
+    }
+    
+    return quotes.filter(quote => {
+        const quoteDate = new Date(quote.date).getTime();
+        return quoteDate >= cutoffDate;
+    });
+}
+
+function isHotItem(pn) {
+    if (!pn) return false;
+    
+    const sevenDaysAgo = Date.now() - (7 * 24 * 60 * 60 * 1000);
+    
+    const recentQuotes = allQuotesCache.filter(quote => {
+        if (quote.pn !== pn) return false;
+        const quoteDate = new Date(quote.date).getTime();
+        return quoteDate >= sevenDaysAgo;
+    });
+    
+    return recentQuotes.length >= 3;
+}
+
+function updateHotItemBadge(pn) {
+    const badgeContainer = document.getElementById('hotItemBadge');
+    
+    if (isHotItem(pn)) {
+        badgeContainer.innerHTML = '<span class="hot-item-badge">🔥 Hot Item</span>';
+    } else {
+        badgeContainer.innerHTML = '';
+    }
+}
+
 function updateMainView(pn, itemName) {
     document.getElementById('itemName').textContent = itemName || 'N/A';
     document.getElementById('partNumber').textContent = pn || 'N/A';
+    
+    updateHotItemBadge(pn);
     
     if (currentHistoryListener) {
         currentHistoryListener.off();
     }
     listenForQuoteHistory(pn);
     
-    // Auto-search for price history
     renderPriceHistoryChart(pn);
     document.getElementById('priceHistorySearchInput').value = pn;
 }
@@ -585,7 +723,7 @@ function renderHistoryTable(tableBody, quotes, includePn = false) {
             <td>${quote.sold || 'N/A'}</td>
             <td class="price-cell">${formatPrice(quote.exchangePrice)}</td>
             <td class="price-cell">${formatPrice(quote.outrightPrice)}</td>
-            <td><select class="status-select" onchange="handleStatusChange(event, '${quote.id}')">
+            <td class="status-cell"><select class="status-select" onchange="handleStatusChange(event, '${quote.id}')">
                 <option value="Quoted" ${quote.status === 'Quoted' ? 'selected' : ''}>Quoted</option>
                 <option value="Sold at Quoted Price Outright" ${quote.status === 'Sold at Quoted Price Outright' ? 'selected' : ''}>Sold Outright</option>
                 <option value="Sold at Quoted Price Exchange" ${quote.status === 'Sold at Quoted Price Exchange' ? 'selected' : ''}>Sold Exchange</option>
@@ -655,14 +793,22 @@ function fetchAllQuotesForSearch() {
         
         const searchTerm = document.getElementById('quoteSearchInput').value;
         if (searchTerm) filterAndDisplayQuotes(searchTerm);
+        
+        // Update hot item badge if we're viewing a part
+        const currentPn = document.getElementById('partNumber').textContent;
+        if (currentPn && currentPn !== 'N/A') {
+            updateHotItemBadge(currentPn);
+        }
     });
 }
 
 function getQuotesToDisplay() {
+    let quotes = getFilteredQuotesByTime(allQuotesCache);
+    
     if (currentResultsLimit === 'all') {
-        return allQuotesCache;
+        return quotes;
     }
-    return allQuotesCache.slice(0, parseInt(currentResultsLimit));
+    return quotes.slice(0, parseInt(currentResultsLimit));
 }
 
 function handleResultsLimitChange(event) {
@@ -682,16 +828,18 @@ function filterAndDisplayQuotes(searchTerm) {
     const searchHistoryBody = document.getElementById('searchHistoryBody');
     const noResultsMessage = document.getElementById('noSearchResultsMessage');
     
+    let quotesToFilter = getFilteredQuotesByTime(allQuotesCache);
+    
     if (!searchTerm) {
         const displayQuotes = getQuotesToDisplay();
         renderHistoryTable(searchHistoryBody, displayQuotes, true);
         noResultsMessage.textContent = 'Type in the search bar to find quotes.';
-        noResultsMessage.style.display = allQuotesCache.length === 0 ? 'block' : 'none';
+        noResultsMessage.style.display = quotesToFilter.length === 0 ? 'block' : 'none';
         return;
     }
     
     const lowerCaseSearchTerm = searchTerm.toLowerCase();
-    const filteredQuotes = allQuotesCache.filter(q =>
+    const filteredQuotes = quotesToFilter.filter(q =>
         (q.pn && q.pn.toLowerCase().includes(lowerCaseSearchTerm)) ||
         (q.sold && q.sold.toLowerCase().includes(lowerCaseSearchTerm)) ||
         (q.itemName && q.itemName.toLowerCase().includes(lowerCaseSearchTerm))
@@ -830,7 +978,6 @@ function renderPriceHistoryChart(pn) {
     
     const labels = salesData.map(d => d.date.toLocaleDateString());
     
-    // Separate data by status
     const quotedExchange = salesData.map(d => d.status === 'Quoted' ? d.exchangePrice : null);
     const quotedOutright = salesData.map(d => d.status === 'Quoted' ? d.outrightPrice : null);
     const soldExchange = salesData.map(d => d.status === 'Sold at Quoted Price Exchange' ? d.exchangePrice : null);
@@ -1179,7 +1326,7 @@ async function generatePDF() {
     
     const selected = allQuotesCache.filter(q => selectedQuotes.has(q.id));
     
-const hasOutright = selected.some(q => q.outrightPrice && !isNaN(parseFloat(q.outrightPrice)));
+    const hasOutright = selected.some(q => q.outrightPrice && !isNaN(parseFloat(q.outrightPrice)));
     const hasExchange = selected.some(q => q.exchangePrice && !isNaN(parseFloat(q.exchangePrice)));
     const hasNotes = selected.some(q => q.notes && q.notes.trim() !== '');
     
@@ -1237,7 +1384,7 @@ const hasOutright = selected.some(q => q.outrightPrice && !isNaN(parseFloat(q.ou
         }
     });
     
-// Build headers
+    // Build headers
     const headers = ['Item Name', 'PN'];
     if (hasExchange) headers.push('Exchange');
     if (hasOutright) headers.push('Outright');
@@ -1263,7 +1410,7 @@ const hasOutright = selected.some(q => q.outrightPrice && !isNaN(parseFloat(q.ou
         return row;
     });
     
-// Build column styles
+    // Build column styles
     const columnStyles = {
         0: { cellWidth: hasNotes ? 50 : 70 },
         1: { cellWidth: hasNotes ? 40 : 50 }
@@ -1294,7 +1441,7 @@ const hasOutright = selected.some(q => q.outrightPrice && !isNaN(parseFloat(q.ou
             fontStyle: 'bold',
             lineWidth: 0
         },
-styles: {
+        styles: {
             fontSize: 8,
             cellPadding: 4,
             lineColor: [220, 220, 220],
@@ -1312,7 +1459,8 @@ styles: {
     });
     
     const finalY = doc.lastAutoTable.finalY;
-// Totals section
+    
+    // Totals section
     if (hasExchange && totalExchange > 0) {
         doc.setFillColor(45, 122, 127);
         doc.rect(15, finalY + 10, 180, 10, 'F');
@@ -1377,8 +1525,8 @@ styles: {
         '',
         'RESTOCKING',
         'If permitted by seller, items must be returned within 10 days. Buyer pays 25% restocking fee. Seller returns 75% upon return and testing of the restocked parts. Parts must be returned in working condition or the parts will not be accepted for restocking; customer will be responsible for 100% purchase price and shipping cost of the part back to customer.',
-'',
-'',
+        '',
+        '',
         '',
         'EXCHANGE SALE',
         'Exchange item needs to be returned prior to shipping of ordered parts unless otherwise agreed and stated, but in any case not later than 30 days. Exchange items must be repairable or outright sale applies.',
@@ -1398,7 +1546,8 @@ styles: {
         'Orange, CA 92868',
         ''
     ];
-let yPosition = 45;
+    
+    let yPosition = 45;
     const lineHeight = 5.5;
     const pageHeight = doc.internal.pageSize.getHeight();
     const bottomMargin = 20;
