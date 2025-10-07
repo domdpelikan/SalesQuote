@@ -663,29 +663,67 @@ function getFilteredQuotesByTime(quotes) {
     });
 }
 
-function isHotItem(pn) {
-    if (!pn) return false;
+function getHotItemStatus(pn) {
+    if (!pn) return null;
     
-    const sevenDaysAgo = Date.now() - (7 * 24 * 60 * 60 * 1000);
+    const now = Date.now();
+    const oneWeekAgo = now - (7 * 24 * 60 * 60 * 1000);
+    const oneMonthAgo = now - (30 * 24 * 60 * 60 * 1000);
+    const oneYearAgo = now - (365 * 24 * 60 * 60 * 1000);
     
-    const recentQuotes = allQuotesCache.filter(quote => {
-        if (quote.pn !== pn) return false;
-        const quoteDate = new Date(quote.date).getTime();
-        return quoteDate >= sevenDaysAgo;
+    // Get all quotes for this part number
+    const allQuotesForPn = allQuotesCache.filter(quote => quote.pn === pn);
+    
+    // Group quotes by date (ignoring time)
+    const quotesByDate = {};
+    allQuotesForPn.forEach(quote => {
+        const date = new Date(quote.date);
+        const dateKey = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+        
+        if (!quotesByDate[dateKey]) {
+            quotesByDate[dateKey] = {
+                timestamp: date.getTime(),
+                count: 0
+            };
+        }
+        quotesByDate[dateKey].count++;
     });
     
-    return recentQuotes.length >= 3;
+    // Count unique days with quotes in each time period
+    const uniqueDaysInWeek = Object.values(quotesByDate).filter(day => day.timestamp >= oneWeekAgo).length;
+    const totalQuotesInMonth = allQuotesForPn.filter(q => new Date(q.date).getTime() >= oneMonthAgo).length;
+    const totalQuotesInYear = allQuotesForPn.filter(q => new Date(q.date).getTime() >= oneYearAgo).length;
+    
+    // Check for Hot Item of the Year (20+ quotes in a year)
+    if (totalQuotesInYear >= 20) {
+        return { level: 'year', label: '🔥 Hot Item of the Year' };
+    }
+    
+    // Check for Hot Item of the Month (10+ quotes in a month)
+    if (totalQuotesInMonth >= 10) {
+        return { level: 'month', label: '🔥 Hot Item of the Month' };
+    }
+    
+    // Check for Hot Item of the Week (3+ different days in the last 7 days)
+    if (uniqueDaysInWeek >= 3) {
+        return { level: 'week', label: '🔥 Hot Item of the Week' };
+    }
+    
+    return null;
 }
 
 function updateHotItemBadge(pn) {
     const badgeContainer = document.getElementById('hotItemBadge');
+    const hotStatus = getHotItemStatus(pn);
     
-    if (isHotItem(pn)) {
-        badgeContainer.innerHTML = '<span class="hot-item-badge">🔥 Hot Item</span>';
+    if (hotStatus) {
+        badgeContainer.innerHTML = `<span class="hot-item-badge">${hotStatus.label}</span>`;
     } else {
         badgeContainer.innerHTML = '';
     }
 }
+
+
 
 function updateMainView(pn, itemName) {
     document.getElementById('itemName').textContent = itemName || 'N/A';
