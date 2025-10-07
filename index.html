@@ -250,6 +250,7 @@
                                     <th class="price-cell">Exchange</th>
                                     <th class="price-cell">Outright</th>
                                     <th class="status-cell">Status</th>
+                                    <th>Warranty</th>
                                     <th>Notes</th>
                                     <th>Actions</th>
                                 </tr>
@@ -315,6 +316,7 @@
                                     <th class="price-cell">Exchange</th>
                                     <th class="price-cell">Outright</th>
                                     <th class="status-cell">Status</th>
+                                    <th>Warranty</th>
                                     <th>Notes</th>
                                     <th>Actions</th>
                                 </tr>
@@ -352,10 +354,19 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h4>Edit Quote</h4>
+                <p id="editItemInfo" style="margin-top: 8px; font-size: 14px; color: #6b7280; font-weight: normal;"></p>
             </div>
             <div class="modal-body">
                 <form id="editQuoteForm">
                     <input type="hidden" id="editQuoteId">
+                    <div class="form-group">
+                        <label for="editItemName">Item Name:</label>
+                        <input type="text" id="editItemName" name="itemName" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="editPartNumber">Part Number:</label>
+                        <input type="text" id="editPartNumber" name="partNumber" required>
+                    </div>
                     <div class="form-group">
                         <label for="editSoldTo">Sold:</label>
                         <select id="editSoldTo" name="sold" required></select>
@@ -378,6 +389,19 @@
                             <option value="Sold at Quoted Price Exchange">Sold at Quoted Price Exchange</option>
                             <option value="Lost Sale">Lost Sale</option>
                         </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="editWarrantyDays">Warranty (Days):</label>
+                        <select id="editWarrantyDays" name="warrantyDays" onchange="handleEditWarrantyChange()">
+                            <option value="30">30 Days</option>
+                            <option value="60">60 Days</option>
+                            <option value="90">90 Days</option>
+                            <option value="custom">Other (Custom)</option>
+                        </select>
+                    </div>
+                    <div class="form-group" id="editCustomWarrantyGroup" style="display: none;">
+                        <label for="editCustomWarranty">Custom Warranty Days:</label>
+                        <input type="number" id="editCustomWarranty" placeholder="Enter days" min="1">
                     </div>
                     <div class="form-group">
                         <label for="editNotes">Notes:</label>
@@ -515,6 +539,25 @@ function getWarrantyDays() {
     const select = document.getElementById('warrantyDays');
     if (select.value === 'custom') {
         const customValue = document.getElementById('customWarranty').value;
+        return customValue ? parseInt(customValue) : 60;
+    }
+    return parseInt(select.value);
+}
+function handleEditWarrantyChange() {
+    const select = document.getElementById('editWarrantyDays');
+    const customGroup = document.getElementById('editCustomWarrantyGroup');
+    
+    if (select.value === 'custom') {
+        customGroup.style.display = 'block';
+    } else {
+        customGroup.style.display = 'none';
+    }
+}
+
+function getEditWarrantyDays() {
+    const select = document.getElementById('editWarrantyDays');
+    if (select.value === 'custom') {
+        const customValue = document.getElementById('editCustomWarranty').value;
         return customValue ? parseInt(customValue) : 60;
     }
     return parseInt(select.value);
@@ -767,6 +810,7 @@ function renderHistoryTable(tableBody, quotes, includePn = false) {
                 <option value="Sold at Quoted Price Exchange" ${quote.status === 'Sold at Quoted Price Exchange' ? 'selected' : ''}>Sold Exchange</option>
                 <option value="Lost Sale" ${quote.status === 'Lost Sale' ? 'selected' : ''}>Lost Sale</option>
             </select></td>
+            <td>${quote.warrantyDays || 60} days</td>
             <td class="notes-cell">
                 ${quote.notes ? `<button data-action="view-notes" data-quote='${quoteData}'>View</button>` : '—'}
             </td>
@@ -1167,6 +1211,10 @@ function openEditModal(quote) {
     const modal = document.getElementById('editModal');
     document.getElementById('editQuoteId').value = quote.id;
     
+    // Show item name and PN in modal header
+    const itemInfo = document.getElementById('editItemInfo');
+    itemInfo.textContent = `${quote.itemName || 'N/A'} • PN: ${quote.pn || 'N/A'}`;
+    
     const soldToSelect = document.getElementById('editSoldTo');
     soldToSelect.innerHTML = '';
     soldListCache.forEach(name => {
@@ -1180,10 +1228,23 @@ function openEditModal(quote) {
     const outright = quote.outrightPrice ? quote.outrightPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '';
     const exchange = quote.exchangePrice ? quote.exchangePrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '';
     
+    document.getElementById('editItemName').value = quote.itemName || '';
+    document.getElementById('editPartNumber').value = quote.pn || '';
     document.getElementById('editOutrightPrice').value = outright;
     document.getElementById('editExchangePrice').value = exchange;
     document.getElementById('editStatus').value = quote.status;
     document.getElementById('editNotes').value = quote.notes || '';
+    
+    // Set warranty
+    const warrantyDays = quote.warrantyDays || 60;
+    if ([30, 60, 90].includes(warrantyDays)) {
+        document.getElementById('editWarrantyDays').value = warrantyDays;
+        document.getElementById('editCustomWarrantyGroup').style.display = 'none';
+    } else {
+        document.getElementById('editWarrantyDays').value = 'custom';
+        document.getElementById('editCustomWarranty').value = warrantyDays;
+        document.getElementById('editCustomWarrantyGroup').style.display = 'block';
+    }
     
     modal.classList.add('visible');
 }
@@ -1200,10 +1261,13 @@ async function handleEditFormSubmit() {
     const exchangePriceValue = document.getElementById('editExchangePrice').value.replace(/,/g, '');
     
     const updatedQuote = {
+        itemName: document.getElementById('editItemName').value,
+        pn: document.getElementById('editPartNumber').value,
         sold: document.getElementById('editSoldTo').value,
         outrightPrice: outrightPriceValue ? parseFloat(outrightPriceValue) : null,
         exchangePrice: exchangePriceValue ? parseFloat(exchangePriceValue) : null,
         status: document.getElementById('editStatus').value,
+        warrantyDays: getEditWarrantyDays(),
         notes: document.getElementById('editNotes').value,
     };
     
@@ -1331,6 +1395,7 @@ function copySelectedQuotes() {
         if (quote.outrightPrice) {
             copyText += `Outright Price: ${formatPrice(quote.outrightPrice)}\n`;
         }
+        copyText += `Warranty: ${quote.warrantyDays || 60} days\n`;
         if (quote.notes && quote.notes.trim() !== '') {
             copyText += `Notes: ${quote.notes}\n`;
         }
