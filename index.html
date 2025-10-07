@@ -1611,7 +1611,14 @@ async function generatePDF() {
     doc.setTextColor(0, 0, 0);
     doc.setFont(undefined, 'normal');
     
-    const warrantyDays = selected[0]?.warrantyDays || 60;
+    // Build warranty list for all items
+    let warrantyList = [];
+    selected.forEach((quote) => {
+        const itemName = quote.itemName || 'N/A';
+        const pn = quote.pn || 'N/A';
+        const warranty = quote.warrantyDays || 60;
+        warrantyList.push(`${itemName} (PN: ${pn}) - ${warranty} days from date of delivery.`);
+    });
     
     const terms = [
         '',
@@ -1635,7 +1642,7 @@ async function generatePDF() {
         'Exchange item needs to be returned prior to shipping of ordered parts unless otherwise agreed and stated, but in any case not later than 30 days. Exchange items must be repairable or outright sale applies.',
         '',
         'WARRANTY',
-        `${warrantyDays} days from date of delivery.`,
+        ...warrantyList,
         '',
         'TAXES AND DUTIES',
         'The customer is responsible for all federal, state or local taxes, customs, or duties as they apply by governing agencies.',
