@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -164,8 +165,8 @@
                 <section class="item-info">
                     <h3>Item Details</h3>
                     <div style="display: flex; gap: 20px; margin-bottom: 16px;">
-                        <button onclick="toggleManualEntry()" style="width: auto; padding: 10px 20px;">
-                            Toggle Manual Entry
+                        <button onclick="toggleManualEntry()" style="width: auto; padding: 6px 12px; font-size: 13px;">
+                            Manual Entry
                         </button>
                     </div>
                     <div id="autoItemDetails">
@@ -226,6 +227,7 @@
                                 <option value="Sold at Quoted Price Outright">Sold at Quoted Price Outright</option>
                                 <option value="Sold at Quoted Price Exchange">Sold at Quoted Price Exchange</option>
                                 <option value="Lost Sale">Lost Sale</option>
+                                <option value="No Stock">No Stock</option>
                             </select>
                         </div>
                         <div class="form-group">
@@ -240,7 +242,15 @@
                 <hr class="divider">
 
                 <section class="quote-history">
-                    <h3>Quote History for this Part (Latest 10)</h3>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                        <h3 style="margin-bottom: 0;">Quote History for this Part</h3>
+                        <select id="historyTimeFilter" style="width: auto; padding: 8px 12px;">
+                            <option value="month">Last Month</option>
+                            <option value="6months">Last 6 Months</option>
+                            <option value="year">Last Year</option>
+                            <option value="all" selected>All Time</option>
+                        </select>
+                    </div>
                     <div class="history-container">
                         <table id="historyTable">
                             <thead>
@@ -261,14 +271,6 @@
                     </div>
                 </section>
 
-                <hr class="divider">
-                <section class="sales-history-graph">
-                    <h3>Sales History Graph</h3>
-                    <div class="history-container">
-                        <canvas id="salesHistoryChart"></canvas>
-                        <p id="noSalesDataMessage" class="no-history-message" style="display: none;">No sales history available for this part.</p>
-                    </div>
-                </section>
 
                 <hr class="divider">
 
@@ -281,16 +283,19 @@
                     
 
                     <div class="form-group">
-                        <input type="search" id="quoteSearchInput" placeholder="Search by PN, Sold To, or Item Name...">
+                         <input type="search" id="quoteSearchInput" placeholder="Search by PN, Sold To, Item Name, or Status...">
                     </div>
+                     
                     <div class="form-group" style="display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap;">
                         <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap; flex: 1;">
                             <label for="resultsLimit" style="margin: 0; font-size: 14px;">Show:</label>
-                            <select id="resultsLimit" style="width: auto; padding: 8px 12px;">
-                                <option value="10">10 results</option>
-                                <option value="25">25 results</option>
-                                <option value="50">50 results</option>
-                                <option value="all">All results</option>
+                             <select id="resultsLimit" style="width: auto; padding: 8px 12px;">
+                                <option value="10" selected>Recent</option>
+                                <option value="today">Today</option>
+                                <option value="yesterday">Yesterday</option>
+                                <option value="week">Last Week</option>
+                                <option value="month">Last Month</option>
+                                <option value="all">All Quotes</option>
                             </select>
                             
                         </div>
@@ -388,6 +393,7 @@
                             <option value="Sold at Quoted Price Outright">Sold at Quoted Price Outright</option>
                             <option value="Sold at Quoted Price Exchange">Sold at Quoted Price Exchange</option>
                             <option value="Lost Sale">Lost Sale</option>
+                            <option value="No Stock">No Stock</option>
                         </select>
                     </div>
                     <div class="form-group">
@@ -451,11 +457,11 @@ let salesHistoryChart;
 let priceHistoryChart;
 let currentHistoryListener = null;
 let selectedQuotes = new Set();
-let currentResultsLimit = 25;
+let currentResultsLimit = 10;
 let selectedWarrantyDays = 60;
 let customWarrantyDays = '';
-let currentPriceHistoryPn = null;
 let currentTimeFilter = 'all';
+ 
 
 firebase.initializeApp(firebaseConfig);
 const database = firebase.database();
@@ -480,6 +486,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('quoteSearchInput').addEventListener('input', (e) => filterAndDisplayQuotes(e.target.value));
     document.getElementById('resultsLimit').addEventListener('change', handleResultsLimitChange);
     document.getElementById('selectAllCheckbox').addEventListener('change', handleSelectAll);
+     
     
     ['outrightPrice', 'exchangePrice', 'editOutrightPrice', 'editExchangePrice'].forEach(id => {
         document.getElementById(id).addEventListener('input', handleCurrencyInput);
@@ -809,6 +816,7 @@ function renderHistoryTable(tableBody, quotes, includePn = false) {
                 <option value="Sold at Quoted Price Outright" ${quote.status === 'Sold at Quoted Price Outright' ? 'selected' : ''}>Sold Outright</option>
                 <option value="Sold at Quoted Price Exchange" ${quote.status === 'Sold at Quoted Price Exchange' ? 'selected' : ''}>Sold Exchange</option>
                 <option value="Lost Sale" ${quote.status === 'Lost Sale' ? 'selected' : ''}>Lost Sale</option>
+                <option value="No Stock" ${quote.status === 'No Stock' ? 'selected' : ''}>No Stock</option>
             </select></td>
             <td>${quote.warrantyDays || 60} days</td>
             <td class="notes-cell">
@@ -846,16 +854,60 @@ function listenForQuoteHistory(pn) {
             });
             
             const sortedQuotes = quotes.sort((a, b) => new Date(b.date) - new Date(a.date));
-            const latest10 = sortedQuotes.slice(0, 10);
-            renderHistoryTable(historyBody, latest10);
+            const filteredQuotes = filterQuotesByTimeRange(sortedQuotes, currentHistoryTimeFilter);
+            renderHistoryTable(historyBody, filteredQuotes);
         } else {
             historyBody.innerHTML = '';
             noHistoryMessage.style.display = 'block';
         }
         
-        renderSalesHistoryGraph(quotes);
     });
 }
+
+function filterQuotesByTimeRange(quotes, timeRange) {
+    if (timeRange === 'all') {
+        return quotes;
+    }
+    
+    const now = Date.now();
+    let cutoffDate;
+    
+    switch(timeRange) {
+        case 'month':
+            cutoffDate = now - (30 * 24 * 60 * 60 * 1000);
+            break;
+        case '6months':
+            cutoffDate = now - (180 * 24 * 60 * 60 * 1000);
+            break;
+        case 'year':
+            cutoffDate = now - (365 * 24 * 60 * 60 * 1000);
+            break;
+        default:
+            return quotes;
+    }
+    
+    return quotes.filter(quote => {
+        const quoteDate = new Date(quote.date).getTime();
+        return quoteDate >= cutoffDate;
+    });
+}
+
+function handleHistoryTimeFilterChange(event) {
+    currentHistoryTimeFilter = event.target.value;
+    
+    // Re-trigger the current part's history
+    const currentPn = document.getElementById('partNumber').textContent;
+    if (currentPn && currentPn !== 'N/A') {
+        // The listener will automatically update when we change the filter
+        // We just need to manually trigger a re-render
+        if (currentHistoryListener) {
+            currentHistoryListener.off();
+            listenForQuoteHistory(currentPn);
+        }
+    }
+}
+
+ 
 
 function fetchAllQuotesForSearch() {
     const quotesRef = database.ref('quotes');
@@ -885,12 +937,47 @@ function fetchAllQuotesForSearch() {
 }
 
 function getQuotesToDisplay() {
-    let quotes = getFilteredQuotesByTime(allQuotesCache);
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+    const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+    const yesterdayStart = new Date(todayStart);
+    yesterdayStart.setDate(yesterdayStart.getDate() - 1);
+    const yesterdayEnd = new Date(todayEnd);
+    yesterdayEnd.setDate(yesterdayEnd.getDate() - 1);
+    const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
     
-    if (currentResultsLimit === 'all') {
-        return quotes;
+    let quotes = allQuotesCache;
+    
+    switch(currentResultsLimit) {
+        case 'today':
+            quotes = allQuotesCache.filter(q => {
+                const qDate = new Date(q.date);
+                return qDate >= todayStart && qDate <= todayEnd;
+            });
+            break;
+        case 'yesterday':
+            quotes = allQuotesCache.filter(q => {
+                const qDate = new Date(q.date);
+                return qDate >= yesterdayStart && qDate <= yesterdayEnd;
+            });
+            break;
+        case 'week':
+            quotes = allQuotesCache.filter(q => new Date(q.date) >= weekAgo);
+            break;
+        case 'month':
+            quotes = allQuotesCache.filter(q => new Date(q.date) >= monthAgo);
+            break;
+        case 'all':
+            quotes = allQuotesCache;
+            break;
+        default:
+            // For numeric values like "10"
+            quotes = allQuotesCache.slice(0, parseInt(currentResultsLimit));
+            break;
     }
-    return quotes.slice(0, parseInt(currentResultsLimit));
+    
+    return quotes;
 }
 
 function handleResultsLimitChange(event) {
@@ -902,7 +989,7 @@ function handleResultsLimitChange(event) {
     } else {
         const displayQuotes = getQuotesToDisplay();
         renderHistoryTable(document.getElementById('searchHistoryBody'), displayQuotes, true);
-        document.getElementById('noSearchResultsMessage').style.display = allQuotesCache.length === 0 ? 'block' : 'none';
+        document.getElementById('noSearchResultsMessage').style.display = displayQuotes.length === 0 ? 'block' : 'none';
     }
 }
 
@@ -916,7 +1003,7 @@ function filterAndDisplayQuotes(searchTerm) {
         const displayQuotes = getQuotesToDisplay();
         renderHistoryTable(searchHistoryBody, displayQuotes, true);
         noResultsMessage.textContent = 'Type in the search bar to find quotes.';
-        noResultsMessage.style.display = quotesToFilter.length === 0 ? 'block' : 'none';
+        noResultsMessage.style.display = displayQuotes.length === 0 ? 'block' : 'none';
         return;
     }
     
@@ -924,7 +1011,8 @@ function filterAndDisplayQuotes(searchTerm) {
     const filteredQuotes = quotesToFilter.filter(q =>
         (q.pn && q.pn.toLowerCase().includes(lowerCaseSearchTerm)) ||
         (q.sold && q.sold.toLowerCase().includes(lowerCaseSearchTerm)) ||
-        (q.itemName && q.itemName.toLowerCase().includes(lowerCaseSearchTerm))
+        (q.itemName && q.itemName.toLowerCase().includes(lowerCaseSearchTerm)) ||
+        (q.status && q.status.toLowerCase().includes(lowerCaseSearchTerm))
     );
     
     const displayQuotes = currentResultsLimit === 'all' ? filteredQuotes : filteredQuotes.slice(0, parseInt(currentResultsLimit));
@@ -938,91 +1026,7 @@ function filterAndDisplayQuotes(searchTerm) {
         noResultsMessage.style.display = 'block';
     }
 }
-function renderSalesHistoryGraph(quotes) {
-    const canvas = document.getElementById('salesHistoryChart');
-    const noSalesDataMessage = document.getElementById('noSalesDataMessage');
-    
-    const soldQuotes = quotes
-        .filter(q => q.status === 'Sold at Quoted Price Outright' || q.status === 'Sold at Quoted Price Exchange')
-        .sort((a, b) => new Date(a.date) - new Date(b.date));
-
-    if (soldQuotes.length === 0) {
-        canvas.style.display = 'none';
-        noSalesDataMessage.style.display = 'block';
-        if (salesHistoryChart) {
-            salesHistoryChart.destroy();
-        }
-        return;
-    }
-
-    canvas.style.display = 'block';
-    noSalesDataMessage.style.display = 'none';
-
-    const labels = soldQuotes.map(q => new Date(q.date).toLocaleDateString());
-    const exchangeData = soldQuotes.map(q => q.status === 'Sold at Quoted Price Exchange' ? q.exchangePrice : null);
-    const outrightData = soldQuotes.map(q => q.status === 'Sold at Quoted Price Outright' ? q.outrightPrice : null);
-
-    const data = {
-        labels: labels,
-        datasets: [
-            {
-                label: 'Exchange Sale Price',
-                data: exchangeData,
-                borderColor: '#f39237',
-                backgroundColor: 'rgba(243, 146, 55, 0.1)',
-                fill: false,
-                tension: 0.1
-            },
-            {
-                label: 'Outright Sale Price',
-                data: outrightData,
-                borderColor: '#2d7a7f',
-                backgroundColor: 'rgba(45, 122, 127, 0.1)',
-                fill: false,
-                tension: 0.1
-            }
-        ]
-    };
-
-    const config = {
-        type: 'line',
-        data: data,
-        options: {
-            responsive: true,
-            plugins: {
-                legend: { position: 'top' },
-                tooltip: {
-                    callbacks: {
-                        label: function(context) {
-                            let label = context.dataset.label || '';
-                            if (label) {
-                                label += ': ';
-                            }
-                            if (context.parsed.y !== null) {
-                                label += new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(context.parsed.y);
-                            }
-                            return label;
-                        }
-                    }
-                }
-            },
-            scales: {
-                y: {
-                    ticks: {
-                        callback: function(value) {
-                            return '$' + value.toLocaleString();
-                        }
-                    }
-                }
-            }
-        }
-    };
-    
-    if (salesHistoryChart) {
-        salesHistoryChart.destroy();
-    }
-    salesHistoryChart = new Chart(canvas, config);
-}
+ 
 
 function calculatePriceHistory(pn) {
     if (!pn) return [];
@@ -1491,6 +1495,7 @@ async function generatePDF() {
     const headers = ['Item Name', 'PN'];
     if (hasExchange) headers.push('Exchange');
     if (hasOutright) headers.push('Outright');
+    headers.push('Warranty'); // Add warranty column
     if (hasNotes) headers.push('Notes');
     
     // Build table data
@@ -1506,6 +1511,7 @@ async function generatePDF() {
         if (hasOutright) {
             row.push(formatPrice(quote.outrightPrice));
         }
+        row.push(`${quote.warrantyDays || 60} days`); // Add warranty to table
         if (hasNotes) {
             row.push(quote.notes || '—');
         }
@@ -1515,19 +1521,23 @@ async function generatePDF() {
     
     // Build column styles
     const columnStyles = {
-        0: { cellWidth: hasNotes ? 50 : 70 },
-        1: { cellWidth: hasNotes ? 40 : 50 }
+        0: { cellWidth: hasNotes ? 45 : 60 },
+        1: { cellWidth: hasNotes ? 35 : 45 }
     };
     
     let colIndex = 2;
     if (hasExchange) {
-        columnStyles[colIndex] = { cellWidth: 30 };
+        columnStyles[colIndex] = { cellWidth: 28 };
         colIndex++;
     }
     if (hasOutright) {
-        columnStyles[colIndex] = { cellWidth: 30 };
+        columnStyles[colIndex] = { cellWidth: 28 };
         colIndex++;
     }
+    // Warranty column
+    columnStyles[colIndex] = { cellWidth: 25 };
+    colIndex++;
+    
     if (hasNotes) {
         columnStyles[colIndex] = { cellWidth: 'auto' };
     }
@@ -1590,10 +1600,7 @@ async function generatePDF() {
         doc.text(`Total Outright Price: ${formatPrice(totalOutright)}`, 20, yPos + 7);
     }
     
-    doc.setFontSize(8);
-    doc.setTextColor(150, 150, 150);
-    doc.setFont(undefined, 'normal');
-    doc.text(`${quoteNumber} - Page 1 of 2`, doc.internal.pageSize.getWidth() / 2, doc.internal.pageSize.getHeight() - 10, { align: 'center' });
+
     
     // PAGE 2 - Terms and Conditions
     doc.addPage();
@@ -1610,15 +1617,6 @@ async function generatePDF() {
     doc.setFontSize(10);
     doc.setTextColor(0, 0, 0);
     doc.setFont(undefined, 'normal');
-    
-    // Build warranty list for all items
-    let warrantyList = [];
-    selected.forEach((quote) => {
-        const itemName = quote.itemName || 'N/A';
-        const pn = quote.pn || 'N/A';
-        const warranty = quote.warrantyDays || 60;
-        warrantyList.push(`${itemName} (PN: ${pn}) - ${warranty} days from date of delivery.`);
-    });
     
     const terms = [
         '',
@@ -1639,11 +1637,11 @@ async function generatePDF() {
         '',
         '',
         'EXCHANGE SALE',
-        'Exchange item needs to be returned prior to shipping of ordered parts unless otherwise agreed and stated, but in any case not later than 30 days. Exchange items must be repairable or outright sale applies.',
-        '',
-        'WARRANTY',
-        ...warrantyList,
-        '',
+'Exchange item needs to be returned prior to shipping of ordered parts unless otherwise agreed and stated, but in any case not later than 30 days. Exchange items must be repairable or outright sale applies.',
+'',
+'WARRANTY',
+'60 days from date of delivery.',
+'',
         'TAXES AND DUTIES',
         'The customer is responsible for all federal, state or local taxes, customs, or duties as they apply by governing agencies.',
         '',
@@ -1678,10 +1676,15 @@ async function generatePDF() {
         yPosition += lineHeight;
     });
     
-    doc.setFontSize(8);
-    doc.setTextColor(150, 150, 150);
-    doc.setFont(undefined, 'normal');
-    doc.text(`${quoteNumber} - Page 2 of 2`, doc.internal.pageSize.getWidth() / 2, doc.internal.pageSize.getHeight() - 10, { align: 'center' });
+    // Add footer to all pages
+    const totalPages = doc.internal.getNumberOfPages();
+    for (let i = 1; i <= totalPages; i++) {
+        doc.setPage(i);
+        doc.setFontSize(8);
+        doc.setTextColor(150, 150, 150);
+        doc.setFont(undefined, 'normal');
+        doc.text(`${quoteNumber} - Page ${i} of ${totalPages}`, doc.internal.pageSize.getWidth() / 2, doc.internal.pageSize.getHeight() - 10, { align: 'center' });
+    }
     
     const fileName = `iMED_Quote_${quoteNumber}.pdf`;
     doc.save(fileName);
