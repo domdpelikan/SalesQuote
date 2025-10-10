@@ -241,10 +241,10 @@
                 
                 <hr class="divider">
 
-                <section class="quote-history">
+<section class="quote-history">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
                         <h3 style="margin-bottom: 0;">Quote History for this Part</h3>
-                        <select id="historyTimeFilter" style="width: auto; padding: 8px 12px;">
+                        <select id="historyTimeFilter" style="width: auto; padding: 8px 12px;" onchange="handleHistoryTimeFilterChange(event)">
                             <option value="month">Last Month</option>
                             <option value="6months">Last 6 Months</option>
                             <option value="year">Last Year</option>
@@ -461,6 +461,7 @@ let currentResultsLimit = 10;
 let selectedWarrantyDays = 60;
 let customWarrantyDays = '';
 let currentTimeFilter = 'all';
+let currentHistoryTimeFilter = 'all';
  
 
 firebase.initializeApp(firebaseConfig);
