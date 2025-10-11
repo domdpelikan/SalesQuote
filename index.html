@@ -277,9 +277,9 @@
                 <section class="searchable-quote-history">
                     <h3 onclick="toggleSearchSection()" style="cursor: pointer; display: flex; justify-content: space-between; align-items: center;">
                         <span>Search All Quotes</span>
-                        <span id="searchToggleIcon" style="font-size: 20px;">▼</span>
+                        <span id="searchToggleIcon" style="font-size: 20px;">►</span>
                     </h3>
-                    <div id="searchQuotesContent">
+                    <div id="searchQuotesContent" style="display: none;">
                     
 
                     <div class="form-group">
@@ -1195,11 +1195,15 @@ function renderPriceHistoryChart(pn) {
         }
     };
     
-    if (priceHistoryChart) {
+if (priceHistoryChart) {
         priceHistoryChart.destroy();
     }
     priceHistoryChart = new Chart(canvas, config);
+    
+    // Auto-update the search input field to match the displayed chart
+    document.getElementById('priceHistorySearchInput').value = pn;
 }
+
 
 function handlePriceHistorySearch() {
     const searchInput = document.getElementById('priceHistorySearchInput');
