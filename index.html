@@ -1202,6 +1202,14 @@ if (priceHistoryChart) {
     
     // Auto-update the search input field to match the displayed chart
     document.getElementById('priceHistorySearchInput').value = pn;
+    
+    // Force chart update/redraw to ensure it displays properly
+    setTimeout(() => {
+        if (priceHistoryChart) {
+            priceHistoryChart.resize();
+            priceHistoryChart.update();
+        }
+    }, 100);
 }
 
 
