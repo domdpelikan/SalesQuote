@@ -277,9 +277,9 @@
                 <section class="searchable-quote-history">
                     <h3 onclick="toggleSearchSection()" style="cursor: pointer; display: flex; justify-content: space-between; align-items: center;">
                         <span>Search All Quotes</span>
-                        <span id="searchToggleIcon" style="font-size: 20px;">►</span>
+                        <span id="searchToggleIcon" style="font-size: 20px;">▼</span>
                     </h3>
-                    <div id="searchQuotesContent" style="display: none;">
+                    <div id="searchQuotesContent" style="display: block;">
 
                         <div class="form-group">
                             <input type="search" id="quoteSearchInput" placeholder="Search by PN, Sold To, Item Name, or Status...">
@@ -872,7 +872,7 @@ Continue?`;
         
         let orderType = 'Sales';
         const orderRow = {
-            "Order Num": `SO-${Date.now().toString().slice(-8)}`,
+            "Order Num": await getNextOrderNumber(),
             "Date": new Date().toISOString().split('T')[0],
             "Customer": quote.sold,
             "Pn": quote.pn || '',
@@ -996,7 +996,7 @@ async function createBulkOrders() {
     document.body.appendChild(loadingMessage);
     
     try {
-        const sharedOrderNum = `SO-${Date.now().toString().slice(-8)}`;
+        const sharedOrderNum = await getNextOrderNumber();
         const orderRows = [];
         
         for (const quote of selected) {
@@ -1998,6 +1998,60 @@ async function getNextQuoteNumber() {
     } catch (error) {
         console.error("Error generating quote number:", error);
         return `IMA_Q${Date.now()}`;
+    }
+}
+
+async function getNextOrderNumber() {
+    try {
+        // First, check AppSheet for existing order numbers
+        const encodedTableName = encodeURIComponent(APPSHEET_CONFIG.ORDERS_TABLE);
+        const API_URL = `https://api.appsheet.com/api/v2/apps/${APPSHEET_CONFIG.APP_ID}/tables/${encodedTableName}/Action`;
+        
+        const response = await fetch(API_URL, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'ApplicationAccessKey': APPSHEET_CONFIG.API_KEY
+            },
+            body: JSON.stringify({
+                "Action": "Find",
+                "Properties": {},
+                "Rows": []
+            })
+        });
+        
+        let maxOrderNum = 0;
+        
+        if (response.ok) {
+            const data = await response.json();
+            if (Array.isArray(data)) {
+                data.forEach(order => {
+                    const orderNum = order["Order Num"];
+                    if (orderNum && orderNum.startsWith("SO-")) {
+                        const num = parseInt(orderNum.replace("SO-", ""));
+                        if (!isNaN(num) && num > maxOrderNum) {
+                            maxOrderNum = num;
+                        }
+                    }
+                });
+            }
+        }
+        
+        // Use Firebase counter as backup/sync
+        const counterRef = database.ref('orderCounter');
+        const snapshot = await counterRef.once('value');
+        const firebaseCounter = snapshot.val() || 0;
+        
+        // Use whichever is higher
+        const nextNumber = Math.max(maxOrderNum, firebaseCounter) + 1;
+        
+        // Update Firebase counter
+        await counterRef.set(nextNumber);
+        
+        return `SO-${nextNumber}`;
+    } catch (error) {
+        console.error("Error generating order number:", error);
+        return `SO-${Date.now()}`;
     }
 }
 
