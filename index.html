@@ -88,11 +88,28 @@
 
         .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.6); display: flex; align-items: center; justify-content: center; z-index: 1000; opacity: 0; pointer-events: none; transition: opacity 0.3s ease; }
         .modal-overlay.visible { opacity: 1; pointer-events: auto; }
-        .modal-content { background: white; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.2); width: 90%; max-width: 500px; transform: scale(0.95); transition: transform 0.3s ease; }
+        .modal-content { 
+    background: white; 
+    border-radius: 12px; 
+    box-shadow: 0 10px 30px rgba(0,0,0,0.2); 
+    width: 90%; 
+    max-width: 500px; 
+    max-height: 90vh; 
+    transform: scale(0.95); 
+    transition: transform 0.3s ease; 
+    display: flex; 
+    flex-direction: column; 
+    overflow: hidden; 
+}
         .modal-overlay.visible .modal-content { transform: scale(1); }
         .modal-header { padding: 20px; border-bottom: 1px solid #e5e7eb; }
         .modal-header h4 { font-size: 18px; font-weight: 600; }
-        .modal-body { padding: 20px; }
+        .modal-body { 
+    padding: 20px; 
+    overflow-y: auto; 
+    flex: 1; 
+    -webkit-overflow-scrolling: touch; 
+}
         .modal-footer { padding: 15px 20px; border-top: 1px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center; }
         .modal-footer .btn-secondary { background: #e5e7eb; color: #374151; }
         .modal-footer .btn-danger { background: #ef4444; color: white; }
@@ -142,6 +159,10 @@
             background: #2d7a7f;
             color: white;
             border-color: #2d7a7f;
+        }
+
+        body.modal-open {
+            overflow: hidden;
         }
 
         @media (max-width: 640px) {
@@ -297,17 +318,17 @@
                                     <option value="all">All Quotes</option>
                                 </select>
                             </div>
-                            <div style="display: flex; gap: 8px;">
-                                <button id="createBulkOrdersButton" type="button" style="width: auto; padding: 10px 24px; font-size: 14px; background: linear-gradient(135deg, #f39237 0%, #d17a2a 100%);" disabled onclick="createBulkOrders()">
-                                    Create Orders (<span id="bulkOrderCount">0</span>)
-                                </button>
-                                <button id="copySelectedButton" type="button" style="width: auto; padding: 10px 24px; font-size: 14px;" disabled onclick="copySelectedQuotes()">
-                                    Copy (<span id="copyCount">0</span>)
-                                </button>
-                                <button id="generatePdfButton" type="button" style="width: auto; padding: 10px 24px; font-size: 14px;" disabled onclick="generatePDF()">
-                                    PDF (<span id="selectedCount">0</span>)
-                                </button>
-                            </div>
+                        <div style="display: flex; gap: 8px;">
+    <button id="copySelectedButton" type="button" style="width: auto; padding: 10px 24px; font-size: 14px;" disabled onclick="copySelectedQuotes()">
+        Copy (<span id="copyCount">0</span>)
+    </button>
+    <button id="generatePdfButton" type="button" style="width: auto; padding: 10px 24px; font-size: 14px;" disabled onclick="generatePDF()">
+        PDF (<span id="selectedCount">0</span>)
+    </button>
+    <button id="createBulkOrdersButton" type="button" style="width: auto; padding: 10px 24px; font-size: 14px; background: linear-gradient(135deg, #f39237 0%, #d17a2a 100%);" disabled onclick="createBulkOrders()">
+        Create Orders (<span id="bulkOrderCount">0</span>)
+    </button>
+</div>
                         </div>
                         <div class="history-container">
                             <table id="searchHistoryTable">
@@ -370,6 +391,10 @@
                         <label for="editItemName">Item Name:</label>
                         <input type="text" id="editItemName" name="itemName" required>
                     </div>
+<div class="form-group">
+    <label for="editDate">Quote Date:</label>
+    <input type="date" id="editDate" name="date" required>
+</div>
                     <div class="form-group">
                         <label for="editPartNumber">Part Number:</label>
                         <input type="text" id="editPartNumber" name="partNumber" required>
@@ -1631,8 +1656,19 @@ function openEditModal(quote) {
     const modal = document.getElementById('editModal');
     document.getElementById('editQuoteId').value = quote.id;
     
+    const quoteDate = new Date(quote.date);
+    const formattedDate = quoteDate.toLocaleDateString('en-US', { 
+        year: 'numeric', 
+        month: 'short', 
+        day: 'numeric' 
+    });
+    
     const itemInfo = document.getElementById('editItemInfo');
-    itemInfo.textContent = `${quote.itemName || 'N/A'} • PN: ${quote.pn || 'N/A'}`;
+    itemInfo.textContent = `Quoted: ${formattedDate} • ${quote.itemName || 'N/A'} • PN: ${quote.pn || 'N/A'}`;
+    
+    // Set the date input field
+    const dateForInput = quote.date.split('T')[0];
+    document.getElementById('editDate').value = dateForInput;
     
     const soldToSelect = document.getElementById('editSoldTo');
     soldToSelect.innerHTML = '';
@@ -1665,10 +1701,12 @@ function openEditModal(quote) {
     }
     
     modal.classList.add('visible');
+    document.body.classList.add('modal-open');
 }
 
 function closeEditModal() {
     document.getElementById('editModal').classList.remove('visible');
+    document.body.classList.remove('modal-open');
 }
 
 async function handleEditFormSubmit() {
@@ -1678,16 +1716,17 @@ async function handleEditFormSubmit() {
     const outrightPriceValue = document.getElementById('editOutrightPrice').value.replace(/,/g, '');
     const exchangePriceValue = document.getElementById('editExchangePrice').value.replace(/,/g, '');
     
-    const updatedQuote = {
-        itemName: document.getElementById('editItemName').value,
-        pn: document.getElementById('editPartNumber').value,
-        sold: document.getElementById('editSoldTo').value,
-        outrightPrice: outrightPriceValue ? parseFloat(outrightPriceValue) : null,
-        exchangePrice: exchangePriceValue ? parseFloat(exchangePriceValue) : null,
-        status: document.getElementById('editStatus').value,
-        warrantyDays: getEditWarrantyDays(),
-        notes: document.getElementById('editNotes').value,
-    };
+const updatedQuote = {
+    itemName: document.getElementById('editItemName').value,
+    pn: document.getElementById('editPartNumber').value,
+    sold: document.getElementById('editSoldTo').value,
+    outrightPrice: outrightPriceValue ? parseFloat(outrightPriceValue) : null,
+    exchangePrice: exchangePriceValue ? parseFloat(exchangePriceValue) : null,
+    status: document.getElementById('editStatus').value,
+    warrantyDays: getEditWarrantyDays(),
+    notes: document.getElementById('editNotes').value,
+    date: new Date(document.getElementById('editDate').value).toISOString(),
+};
     
     try {
         await database.ref('quotes/' + quoteId).update(updatedQuote);
